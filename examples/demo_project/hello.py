@@ -3,4 +3,4 @@ def greeting(name: str) -> str:
 
 
 if __name__ == "__main__":
-    print(greet("asen"))
+    print(greeting("asen"))

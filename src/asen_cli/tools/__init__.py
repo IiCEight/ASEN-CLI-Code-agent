@@ -4,7 +4,7 @@ from collections.abc import Callable
 
 from ..config import AsenConfig
 from .edit import ApplyPatchTool, ReplaceInFileTool
-from .file import ListFilesTool, ReadFileTool, WriteFileTool
+from .file import ListFilesTool, ReadFileChunkTool, ReadFileTool, WriteFileTool
 from .registry import ToolRegistry
 from .search import (
     FindFilesTool,
@@ -25,6 +25,7 @@ def create_default_registry(
     return ToolRegistry(
         [
             ReadFileTool(config.workspace, config.max_file_bytes),
+            ReadFileChunkTool(config.workspace, config.max_file_bytes),
             WriteFileTool(
                 config.workspace,
                 require_approval=config.require_approval,

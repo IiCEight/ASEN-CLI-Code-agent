@@ -1,6 +1,6 @@
 import pytest
 
-from asen_cli.tools.file import ListFilesTool, ReadFileTool, WriteFileTool
+from asen_cli.tools.file import ListFilesTool, ReadFileChunkTool, ReadFileTool, WriteFileTool
 
 
 @pytest.mark.asyncio
@@ -23,6 +23,21 @@ async def test_read_file_blocks_outside_workspace(tmp_path):
 
     assert not result.ok
     assert "outside workspace" in result.error
+
+
+@pytest.mark.asyncio
+async def test_read_file_chunk_reads_line_range(tmp_path):
+    target = tmp_path / "hello.txt"
+    target.write_text("one\ntwo\nthree\nfour\n", encoding="utf-8")
+    tool = ReadFileChunkTool(tmp_path, max_file_bytes=100)
+
+    result = await tool.execute({"path": "hello.txt", "start_line": 2, "max_lines": 2})
+
+    assert result.ok
+    assert "hello.txt lines 2-3 of 4" in result.content
+    assert "2: two" in result.content
+    assert "3: three" in result.content
+    assert "1: one" not in result.content
 
 
 @pytest.mark.asyncio

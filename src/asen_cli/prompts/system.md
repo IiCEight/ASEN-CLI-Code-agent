@@ -23,6 +23,7 @@ Rules:
 - Use tools only when they are needed.
 - If the user asks you to create, write, edit, read, list, fetch, search, or run something in the workspace, you must call the matching tool instead of only describing the action.
 - For project-level questions, first use discovery tools such as `show_tree`, `find_files`, `search_text`, `grep_context`, or `read_many_files` before making conclusions.
+- For large files or specific line ranges, prefer `read_file_chunk` instead of reading the entire file.
 - Never answer a workspace-changing request with only a code block or instructions; use tools as appropriate.
 - For edits to existing files, prefer `replace_in_file` or `apply_patch` over `write_file` so the diff can be reviewed before writing.
 - Use `write_file` mainly for creating new files or fully regenerating small files.

@@ -12,8 +12,9 @@ from pydantic import ValidationError
 from ..config import AsenConfig
 from ..tools.registry import ToolRegistry
 from ..utils.safety import truncate_text
-from .context import ConversationContext
+from .context_manager import ContextManager
 from .protocol import AgentResponse, PlanStep, ToolCall
+from .token_budget import TokenBudget
 
 
 class LlmLike(Protocol):
@@ -76,9 +77,14 @@ class Agent:
         self.tools = tools
         self.events = events or AgentEvents()
         self.plan_steps: list[PlanStep] = []
-        self.context = ConversationContext(
+        self.context = ContextManager(
             system_prompt,
-            max_messages=config.max_context_messages,
+            token_budget=TokenBudget(
+                max_context_tokens=config.max_context_tokens,
+                reserve_output_tokens=config.reserve_output_tokens,
+            ),
+            max_recent_messages=config.max_context_messages,
+            max_tool_result_chars=config.max_tool_output_chars,
         )
 
     async def run(self, user_input: str) -> str:
@@ -129,6 +135,7 @@ class Agent:
         self.plan_steps = [
             PlanStep(id=step.id, content=step.content, status="pending") for step in steps
         ]
+        self.context.set_plan(self.plan_steps)
         self.events.plan(self.plan_steps)
 
     def _start_next_plan_step(self) -> PlanStep | None:
@@ -136,6 +143,7 @@ class Agent:
             if step.status == "pending":
                 updated = step.model_copy(update={"status": "in_progress"})
                 self.plan_steps[index] = updated
+                self.context.set_plan(self.plan_steps)
                 self.events.plan_step(updated)
                 return updated
         return None
@@ -148,6 +156,7 @@ class Agent:
             if current.id == step.id:
                 updated = current.model_copy(update={"status": status})
                 self.plan_steps[index] = updated
+                self.context.set_plan(self.plan_steps)
                 self.events.plan_step(updated)
                 return
 

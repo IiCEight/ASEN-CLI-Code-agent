@@ -1,6 +1,6 @@
 # asen cli
 
-`asen cli` 是一个轻量级终端 AI 编程助手。它保留 Agent 循环、工具系统、安全边界和终端交互，暂不实现 MCP、ACP、IDE 插件、Web UI、多 Agent 或 Checkpoint。
+`asen cli` 是一个轻量级终端 AI 编程助手。它保留 Agent 循环、工具系统、安全边界和终端交互。
 
 ## 功能
 
@@ -107,7 +107,9 @@ asen chat --workspace examples/demo_project --verbose
 {"tool_calls": [{"name": "read_file", "arguments": {"path": "hello.py"}}]}
 ```
 
-当前内置工具包括 `read_file`、`write_file`、`replace_in_file`、`apply_patch`、`list_files`、`find_files`、`search_text`、`grep_context`、`show_tree`、`read_many_files`、`shell`、`web_fetch`。
+当前内置工具包括 `read_file`、`read_file_chunk`、`write_file`、`replace_in_file`、`apply_patch`、`list_files`、`find_files`、`search_text`、`grep_context`、`show_tree`、`read_many_files`、`shell`、`web_fetch`。
+
+v0.7 起，新增上下文压缩能力：`ContextManager` 会按 token budget 组合 system、summary、facts、plan 和 recent messages，对旧消息做规则摘要，对大工具结果做压缩，并新增 `read_file_chunk` 支持大文件分段读取。完整说明见 `docs/context_compression_upgrade.md`。
 
 ## 安全设计
 

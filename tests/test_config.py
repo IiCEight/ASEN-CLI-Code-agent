@@ -33,6 +33,8 @@ def test_load_config_from_dotenv(tmp_path, monkeypatch):
         "ASEN_API_KEY=sk-from-dotenv\n"
         "ASEN_BASE_URL=https://example.test/v1\n"
         "ASEN_MODEL=dotenv-model\n"
+        "ASEN_MAX_CONTEXT_TOKENS=12000\n"
+        "ASEN_RESERVE_OUTPUT_TOKENS=1500\n"
         "ASEN_REQUIRE_APPROVAL=false\n",
         encoding="utf-8",
     )
@@ -43,4 +45,6 @@ def test_load_config_from_dotenv(tmp_path, monkeypatch):
     assert cfg.api_key == "sk-from-dotenv"
     assert cfg.base_url == "https://example.test/v1"
     assert cfg.model == "dotenv-model"
+    assert cfg.max_context_tokens == 12000
+    assert cfg.reserve_output_tokens == 1500
     assert cfg.require_approval is False

@@ -17,6 +17,8 @@ class AsenConfig(BaseModel):
     workspace: Path = Field(default_factory=Path.cwd)
     max_steps: int = 8
     max_context_messages: int = 24
+    max_context_tokens: int = 16_000
+    reserve_output_tokens: int = 2_000
     command_timeout_seconds: int = 20
     max_file_bytes: int = 120_000
     max_tool_output_chars: int = 12_000
@@ -39,6 +41,8 @@ ENV_MAPPING: dict[str, tuple[str, Any]] = {
     "ASEN_WORKSPACE": ("workspace", Path),
     "ASEN_MAX_STEPS": ("max_steps", int),
     "ASEN_MAX_CONTEXT_MESSAGES": ("max_context_messages", int),
+    "ASEN_MAX_CONTEXT_TOKENS": ("max_context_tokens", int),
+    "ASEN_RESERVE_OUTPUT_TOKENS": ("reserve_output_tokens", int),
     "ASEN_COMMAND_TIMEOUT_SECONDS": ("command_timeout_seconds", int),
     "ASEN_MAX_FILE_BYTES": ("max_file_bytes", int),
     "ASEN_MAX_TOOL_OUTPUT_CHARS": ("max_tool_output_chars", int),
