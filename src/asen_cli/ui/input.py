@@ -38,7 +38,7 @@ class InputReader:
             complete_while_typing=True,
             style=PROMPT_STYLE,
             bottom_toolbar=HTML(
-                "<toolbar> /help  /tools  /config  /paste  /clear  /exit </toolbar>"
+                "<toolbar> !command  /help  /tools  /config  /paste  /clear  /exit </toolbar>"
             ),
         )
 

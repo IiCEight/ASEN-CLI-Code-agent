@@ -4,8 +4,9 @@
 
 ## 功能
 
-- 交互式终端对话（`asen chat`）和一次性任务执行（`asen ask`）
+- 交互式终端对话（`asen chat`）、Shell-heavy 会话（`asen shell`）和一次性任务执行（`asen ask`）
 - 默认流式输出，支持 `--no-stream` 回退到一次性展示
+- 交互会话支持 `!command` 直接执行 shell，结果可回填到 Agent 上下文
 - OpenAI-compatible LLM 调用
 - JSON 工具调用协议：计划、最终回答、工具调用
 - 文件读写、目录列表、Shell 命令执行、网页获取
@@ -141,7 +142,7 @@ v1.0 起，新增流式输出：CLI 默认走 provider 的 `stream_complete()`�
 
 ## 安全设计
 
-文件工具通过 `Path.resolve()` 校验路径必须在 workspace 内。`write_file` 和 `shell` 默认需要用户确认。Shell 工具拦截明显危险的命令，例如 `sudo`、`rm -rf /`、`mkfs`、`dd of=/dev/...`、`shutdown` 和 fork bomb。所有工具输出按配置截断，避免上下文爆炸。
+文件工具通过 `Path.resolve()` 校验路径必须在 workspace 内。Agent 侧的 `write_file` 和 `shell` 工具默认需要用户确认。手动 `!command` 模式则采用更轻量的 guard：普通命令直接执行，高风险命令确认，明显危险的命令直接阻断。Shell 相关能力会拦截 `sudo`、`rm -rf /`、`mkfs`、`dd of=/dev/...`、`shutdown` 和 fork bomb，并对 `git push/reset`、依赖安装、输出重定向、远程执行等命令做高风险确认。所有工具输出按配置截断，避免上下文爆炸。
 
 ## 测试
 

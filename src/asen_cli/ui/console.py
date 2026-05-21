@@ -14,6 +14,7 @@ from rich.text import Text
 
 from ..core.agent import AgentEvents
 from ..core.protocol import PlanStep
+from ..utils.safety import truncate_text
 
 BANNER = r"""
     ___   _____ ______ _   __
@@ -46,27 +47,35 @@ class AsenConsole:
         self._stream_buffer = ""
         self._last_streamed_message: str | None = None
 
-    def title(self) -> None:
+    def title(self, mode: str = "chat") -> None:
         banner = Text(BANNER, style="bold cyan")
-        subtitle = Text(
-            "Teaching-friendly CLI coding agent · type /help to start",
-            style="dim white",
-        )
+        if mode == "shell":
+            subtitle = Text(
+                "Shell-heavy agent session · use !command to run inside the workspace",
+                style="dim white",
+            )
+            panel_title = "[bold cyan]asen shell[/]"
+        else:
+            subtitle = Text(
+                "Teaching-friendly CLI coding agent · type /help to start",
+                style="dim white",
+            )
+            panel_title = "[bold cyan]asen chat[/]"
         body = Group(Align.center(banner), Align.center(subtitle))
         self.console.print(
             Panel(
                 body,
-                title="[bold cyan]asen chat[/]",
-                subtitle="[dim]/tools  /config  /paste  /exit[/]",
+                title=panel_title,
+                subtitle="[dim]!command  /tools  /config  /paste  /exit[/]",
                 border_style="bright_cyan",
                 box=box.DOUBLE,
                 padding=(1, 2),
             )
         )
 
-    def clear(self) -> None:
+    def clear(self, mode: str = "chat") -> None:
         self.console.clear()
-        self.title()
+        self.title(mode)
 
     def info(self, message: str) -> None:
         self._finish_stream(remember=False)
@@ -164,6 +173,23 @@ class AsenConsole:
                     box=box.ROUNDED,
                 )
             )
+
+    def shell_command(self, command: str) -> None:
+        self._finish_stream(remember=False)
+        self.console.print(f"[cyan]├─ shell[/] [bold]{command}[/]")
+
+    def shell_result(self, command: str, rendered: str) -> None:
+        self._finish_stream(remember=False)
+        body = truncate_text(rendered or "(no output)", 4_000)
+        title_command = truncate_text(command, 96).replace("\n", " ")
+        self.console.print(
+            Panel(
+                body,
+                title=f"[cyan]shell result · {title_command}[/]",
+                border_style="cyan",
+                box=box.ROUNDED,
+            )
+        )
 
     def raw_llm_response(self, raw_response: str) -> None:
         if self.verbose_enabled:

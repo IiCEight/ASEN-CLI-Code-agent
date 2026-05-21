@@ -18,6 +18,7 @@ from .config import (
 )
 from .core.agent import Agent, load_system_prompt
 from .core.session import ChatSession
+from .core.shell_mode import InteractiveShellRunner
 from .llm.factory import create_llm_client
 from .tools import create_default_registry
 from .ui.console import AsenConsole
@@ -89,6 +90,27 @@ def ask(
 ) -> None:
     """Run a one-shot task and print the final answer."""
     asyncio.run(_ask(task, config, workspace, no_approval, verbose, stream))
+
+
+@app.command()
+def shell(
+    config: Annotated[Path | None, typer.Option("--config", "-c")] = None,
+    workspace: Annotated[Path | None, typer.Option("--workspace", "-w")] = None,
+    no_approval: Annotated[
+        bool,
+        typer.Option(help="Disable approval prompts for demo/testing."),
+    ] = False,
+    verbose: Annotated[
+        bool,
+        typer.Option("--verbose", "-v", help="Show agent internals."),
+    ] = False,
+    stream: Annotated[
+        bool,
+        typer.Option("--stream/--no-stream", help="Stream assistant output as it arrives."),
+    ] = True,
+) -> None:
+    """Start a shell-heavy interactive session with !command support."""
+    asyncio.run(_shell(config, workspace, no_approval, verbose, stream))
 
 
 @config_app.callback(invoke_without_command=True)
@@ -204,6 +226,42 @@ async def _chat(
     verbose: bool,
     stream: bool,
 ) -> None:
+    await _interactive_session(
+        config_path,
+        workspace,
+        no_approval,
+        verbose,
+        stream,
+        session_mode="chat",
+    )
+
+
+async def _shell(
+    config_path: Path | None,
+    workspace: Path | None,
+    no_approval: bool,
+    verbose: bool,
+    stream: bool,
+) -> None:
+    await _interactive_session(
+        config_path,
+        workspace,
+        no_approval,
+        verbose,
+        stream,
+        session_mode="shell",
+    )
+
+
+async def _interactive_session(
+    config_path: Path | None,
+    workspace: Path | None,
+    no_approval: bool,
+    verbose: bool,
+    stream: bool,
+    *,
+    session_mode: str,
+) -> None:
     console = AsenConsole(verbose=verbose)
     agent = _build_agent(config_path, workspace, no_approval, console, stream)
     session = ChatSession(
@@ -211,6 +269,8 @@ async def _chat(
         config=agent.config,
         console=console,
         input_reader=InputReader(),
+        shell_runner=InteractiveShellRunner(agent.config, confirm=console.confirm),
+        session_mode=session_mode,
     )
     await session.run()
 

@@ -37,4 +37,12 @@ def parse_slash_command(text: str) -> ParsedSlashCommand | None:
 def help_text() -> str:
     rows = ["Slash commands:"]
     rows.extend(f"  {spec.name:<8} {spec.description}" for spec in COMMANDS)
+    rows.extend(
+        [
+            "",
+            "Bang commands:",
+            "  !<command> Run a shell command in the workspace.",
+            "             High-risk commands require approval; blocked commands are rejected.",
+        ]
+    )
     return "\n".join(rows)

@@ -19,3 +19,4 @@ def test_help_text_lists_core_commands():
     assert "/help" in text
     assert "/tools" in text
     assert "/paste" in text
+    assert "!<command>" in text

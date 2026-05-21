@@ -23,4 +23,5 @@ examples/config.yaml
 # Notebook / temp files
 *.html
 .ipynb_checkpoints/
+research_report_*.md
 

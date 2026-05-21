@@ -1,7 +1,12 @@
 import pytest
 
 from asen_cli.utils.errors import SafetyError
-from asen_cli.utils.safety import is_dangerous_command, resolve_workspace_path, truncate_text
+from asen_cli.utils.safety import (
+    assess_command_safety,
+    is_dangerous_command,
+    resolve_workspace_path,
+    truncate_text,
+)
 
 
 def test_resolve_workspace_path_allows_inside(tmp_path):
@@ -22,3 +27,9 @@ def test_dangerous_command_detection():
     assert is_dangerous_command("sudo rm -rf /")
     assert is_dangerous_command("mkfs.ext4 /dev/sda")
     assert not is_dangerous_command("python hello.py")
+
+
+def test_assess_command_safety_distinguishes_levels():
+    assert assess_command_safety("git status").level == "safe"
+    assert assess_command_safety("git reset --hard HEAD").level == "confirm"
+    assert assess_command_safety("sudo rm -rf /").level == "blocked"

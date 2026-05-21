@@ -19,7 +19,6 @@ def test_chat_passes_no_stream_flag(monkeypatch):
     assert captured["stream"] is False
 
 
-
 def test_ask_passes_stream_flag(monkeypatch):
     captured = {}
 
@@ -35,14 +34,31 @@ def test_ask_passes_stream_flag(monkeypatch):
     assert captured == {"task": "hello", "stream": True}
 
 
+def test_shell_passes_no_stream_flag(monkeypatch):
+    captured = {}
+
+    async def fake_shell(config_path, workspace, no_approval, verbose, stream):
+        captured["stream"] = stream
+
+    monkeypatch.setattr(app_module, "_shell", fake_shell)
+
+    result = runner.invoke(app_module.app, ["shell", "--no-stream"])
+
+    assert result.exit_code == 0
+    assert captured["stream"] is False
+
 
 def test_help_shows_stream_flags():
     chat_help = runner.invoke(app_module.app, ["chat", "--help"])
     ask_help = runner.invoke(app_module.app, ["ask", "--help"])
+    shell_help = runner.invoke(app_module.app, ["shell", "--help"])
 
     assert chat_help.exit_code == 0
     assert ask_help.exit_code == 0
+    assert shell_help.exit_code == 0
     assert "--stream" in chat_help.output
     assert "--no-stream" in chat_help.output
     assert "--stream" in ask_help.output
     assert "--no-stream" in ask_help.output
+    assert "--stream" in shell_help.output
+    assert "--no-stream" in shell_help.output
