@@ -18,6 +18,7 @@ from .config import (
 )
 from .core.agent import Agent, load_system_prompt
 from .core.session import ChatSession
+from .core.session_store import SessionStore
 from .core.shell_mode import InteractiveShellRunner
 from .llm.factory import create_llm_client
 from .tools import create_default_registry
@@ -34,6 +35,10 @@ app = typer.Typer(
 config_app = typer.Typer(
     help="Show and manage asen cli configuration.",
     invoke_without_command=True,
+)
+session_app = typer.Typer(
+    help="List and resume saved interactive sessions.",
+    no_args_is_help=True,
 )
 
 
@@ -136,11 +141,17 @@ def config_get(
     key: Annotated[str | None, typer.Argument(help="Config key to read.")] = None,
     global_config: Annotated[
         bool,
-        typer.Option("--global", help="Read from ~/.asen/config.yaml instead of resolved config."),
+        typer.Option(
+            "--global",
+            help="Read from ~/.asen/config.yaml instead of resolved config.",
+        ),
     ] = False,
     project_config: Annotated[
         bool,
-        typer.Option("--project", help="Read from .asen/config.yaml instead of resolved config."),
+        typer.Option(
+            "--project",
+            help="Read from .asen/config.yaml instead of resolved config.",
+        ),
     ] = False,
 ) -> None:
     """Get resolved configuration or one key."""
@@ -216,7 +227,65 @@ def config_init(
         raise typer.Exit(code=1) from exc
 
 
+@session_app.command("list")
+def session_list(
+    config: Annotated[Path | None, typer.Option("--config", "-c")] = None,
+    workspace: Annotated[Path | None, typer.Option("--workspace", "-w")] = None,
+) -> None:
+    """List saved sessions in the current workspace."""
+    console = AsenConsole()
+    try:
+        cfg = load_config(config, workspace=workspace)
+        sessions = SessionStore.list(cfg.workspace)
+        if not sessions:
+            console.info("No saved sessions yet. Start one with `asen chat` or `asen shell`.")
+            return
+        rows = [
+            {
+                "session_id": item.session_id,
+                "session_mode": item.session_mode,
+                "updated_at": _compact_timestamp(item.updated_at),
+                "turn_count": item.turn_count,
+                "tool_call_count": item.tool_call_count,
+                "summary_preview": item.summary_preview or item.title,
+            }
+            for item in sessions
+        ]
+        console.sessions(rows)
+    except AsenError as exc:
+        console.error(str(exc))
+        raise typer.Exit(code=1) from exc
+
+
+@session_app.command("resume")
+def session_resume(
+    session_id: Annotated[
+        str,
+        typer.Argument(help="Session id or unique prefix to resume."),
+    ],
+    config: Annotated[Path | None, typer.Option("--config", "-c")] = None,
+    workspace: Annotated[Path | None, typer.Option("--workspace", "-w")] = None,
+    no_approval: Annotated[
+        bool,
+        typer.Option(help="Disable approval prompts for demo/testing."),
+    ] = False,
+    verbose: Annotated[
+        bool,
+        typer.Option("--verbose", "-v", help="Show agent internals."),
+    ] = False,
+    stream: Annotated[
+        bool,
+        typer.Option("--stream/--no-stream", help="Stream assistant output as it arrives."),
+    ] = True,
+) -> None:
+    """Resume a saved interactive session."""
+    asyncio.run(
+        _resume_session(session_id, config, workspace, no_approval, verbose, stream)
+    )
+
+
 app.add_typer(config_app, name="config")
+app.add_typer(session_app, name="session")
 
 
 async def _chat(
@@ -253,6 +322,25 @@ async def _shell(
     )
 
 
+async def _resume_session(
+    session_id: str,
+    config_path: Path | None,
+    workspace: Path | None,
+    no_approval: bool,
+    verbose: bool,
+    stream: bool,
+) -> None:
+    await _interactive_session(
+        config_path,
+        workspace,
+        no_approval,
+        verbose,
+        stream,
+        session_mode=None,
+        resume_session_id=session_id,
+    )
+
+
 async def _interactive_session(
     config_path: Path | None,
     workspace: Path | None,
@@ -260,19 +348,36 @@ async def _interactive_session(
     verbose: bool,
     stream: bool,
     *,
-    session_mode: str,
+    session_mode: str | None,
+    resume_session_id: str | None = None,
 ) -> None:
     console = AsenConsole(verbose=verbose)
-    agent = _build_agent(config_path, workspace, no_approval, console, stream)
-    session = ChatSession(
-        agent=agent,
-        config=agent.config,
-        console=console,
-        input_reader=InputReader(),
-        shell_runner=InteractiveShellRunner(agent.config, confirm=console.confirm),
-        session_mode=session_mode,
-    )
-    await session.run()
+    try:
+        agent = _build_agent(config_path, workspace, no_approval, console, stream)
+        resumed = resume_session_id is not None
+        store = (
+            SessionStore.open(agent.config.workspace, resume_session_id)
+            if resume_session_id is not None
+            else SessionStore.create(agent.config, session_mode=session_mode or "chat")
+        )
+        snapshot = store.latest_snapshot()
+        if snapshot:
+            agent.load_context_snapshot(snapshot)
+        resolved_mode = store.meta.session_mode if resumed else (session_mode or "chat")
+        session = ChatSession(
+            agent=agent,
+            config=agent.config,
+            console=console,
+            input_reader=InputReader(),
+            shell_runner=InteractiveShellRunner(agent.config, confirm=console.confirm),
+            session_mode=resolved_mode,
+            session_store=store,
+            resumed=resumed,
+        )
+        await session.run()
+    except AsenError as exc:
+        console.error(str(exc))
+        raise typer.Exit(code=1) from exc
 
 
 async def _ask(
@@ -317,3 +422,7 @@ def _config_scope(global_config: bool, project_config: bool) -> str:
     if global_config and project_config:
         raise AsenError("Use only one of --global or --project")
     return "global" if global_config else "project"
+
+
+def _compact_timestamp(value: str) -> str:
+    return value.replace("T", " ").replace("+00:00", " UTC")[:23]

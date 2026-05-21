@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from typing import Any
 
 from ..utils.safety import truncate_text
 from .protocol import ChatMessage, PlanStep
@@ -64,6 +65,31 @@ class ContextManager:
         messages = self._compose_messages()
         messages = self._trim_to_budget(messages)
         return [message.to_openai() for message in messages]
+
+    def snapshot(self) -> dict[str, Any]:
+        return {
+            "messages": [message.model_dump(mode="json") for message in self.messages],
+            "summary": self.summary,
+            "facts": list(self.facts),
+            "plan_steps": [step.model_dump(mode="json") for step in self.plan_steps],
+        }
+
+    def load_snapshot(self, snapshot: dict[str, Any]) -> None:
+        self.messages = [
+            ChatMessage.model_validate(item) for item in snapshot.get("messages", []) or []
+        ]
+        summary = snapshot.get("summary")
+        self.summary = str(summary) if summary else None
+        self.facts = [str(item) for item in snapshot.get("facts", []) or []]
+        self.plan_steps = [
+            PlanStep.model_validate(item) for item in snapshot.get("plan_steps", []) or []
+        ]
+
+    def latest_assistant_message(self) -> str | None:
+        for message in reversed(self.messages):
+            if message.role == "assistant":
+                return message.content
+        return None
 
     def _append(self, message: ChatMessage) -> None:
         self.messages.append(message)

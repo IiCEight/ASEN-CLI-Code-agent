@@ -48,17 +48,43 @@ def test_shell_passes_no_stream_flag(monkeypatch):
     assert captured["stream"] is False
 
 
+def test_session_resume_passes_no_stream_flag(monkeypatch):
+    captured = {}
+
+    async def fake_resume(session_id, config_path, workspace, no_approval, verbose, stream):
+        captured["session_id"] = session_id
+        captured["stream"] = stream
+
+    monkeypatch.setattr(app_module, "_resume_session", fake_resume)
+
+    result = runner.invoke(app_module.app, ["session", "resume", "demo-session", "--no-stream"])
+
+    assert result.exit_code == 0
+    assert captured == {"session_id": "demo-session", "stream": False}
+
+
+def test_session_list_empty_state(tmp_path):
+    result = runner.invoke(app_module.app, ["session", "list", "--workspace", str(tmp_path)])
+
+    assert result.exit_code == 0
+    assert "No saved sessions yet" in result.output
+
+
 def test_help_shows_stream_flags():
     chat_help = runner.invoke(app_module.app, ["chat", "--help"])
     ask_help = runner.invoke(app_module.app, ["ask", "--help"])
     shell_help = runner.invoke(app_module.app, ["shell", "--help"])
+    resume_help = runner.invoke(app_module.app, ["session", "resume", "--help"])
 
     assert chat_help.exit_code == 0
     assert ask_help.exit_code == 0
     assert shell_help.exit_code == 0
+    assert resume_help.exit_code == 0
     assert "--stream" in chat_help.output
     assert "--no-stream" in chat_help.output
     assert "--stream" in ask_help.output
     assert "--no-stream" in ask_help.output
     assert "--stream" in shell_help.output
     assert "--no-stream" in shell_help.output
+    assert "--stream" in resume_help.output
+    assert "--no-stream" in resume_help.output

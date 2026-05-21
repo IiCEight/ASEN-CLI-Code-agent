@@ -68,3 +68,21 @@ def test_render_plan_outputs_statuses():
     rendered = render_plan([PlanStep(id="1", content="Do it", status="in_progress")])
 
     assert "[in_progress] 1. Do it" in rendered
+
+
+def test_context_manager_snapshot_round_trip():
+    manager = ContextManager(
+        "system",
+        token_budget=TokenBudget(max_context_tokens=2_000, reserve_output_tokens=100),
+    )
+    manager.add_user("restore me")
+    manager.add_assistant("done")
+
+    restored = ContextManager(
+        "system",
+        token_budget=TokenBudget(max_context_tokens=2_000, reserve_output_tokens=100),
+    )
+    restored.load_snapshot(manager.snapshot())
+
+    assert restored.messages[-1].content == "done"
+    assert restored.latest_assistant_message() == "done"

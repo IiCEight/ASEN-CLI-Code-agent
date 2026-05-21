@@ -230,6 +230,31 @@ class AsenConsole:
             table.add_row(str(key), str(value))
         self.console.print(table)
 
+    def sessions(self, rows: list[dict[str, Any]]) -> None:
+        self._finish_stream(remember=False)
+        table = Table(
+            title="Saved Sessions",
+            box=box.SIMPLE_HEAVY,
+            header_style="bold cyan",
+            border_style="cyan",
+        )
+        table.add_column("Session ID", style="bold cyan", no_wrap=True)
+        table.add_column("Mode", no_wrap=True)
+        table.add_column("Updated", no_wrap=True)
+        table.add_column("Turns", justify="right", no_wrap=True)
+        table.add_column("Tools", justify="right", no_wrap=True)
+        table.add_column("Summary", style="white")
+        for row in rows:
+            table.add_row(
+                str(row.get("session_id", "")),
+                str(row.get("session_mode", "")),
+                str(row.get("updated_at", "")),
+                str(row.get("turn_count", "")),
+                str(row.get("tool_call_count", "")),
+                str(row.get("summary_preview", "")),
+            )
+        self.console.print(table)
+
     def help(self, message: str) -> None:
         self._finish_stream(remember=False)
         self.console.print(

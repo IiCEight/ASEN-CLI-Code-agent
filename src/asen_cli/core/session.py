@@ -7,6 +7,7 @@ from ..tools.base import ToolResult
 from ..ui.slash import ParsedSlashCommand, help_text, parse_slash_command
 from ..utils.errors import AsenError
 from .agent import Agent
+from .session_store import SessionStore
 from .shell_mode import InteractiveShellRunner, render_shell_context
 
 
@@ -44,17 +45,28 @@ class ChatSession:
         input_reader: InputReaderLike,
         shell_runner: ShellRunnerLike | None = None,
         session_mode: str = "chat",
+        session_store: SessionStore | None = None,
+        resumed: bool = False,
     ) -> None:
         self.agent = agent
         self.config = config
         self.console = console
         self.input_reader = input_reader
         self.session_mode = session_mode
+        self.session_store = session_store
+        self.resumed = resumed
+        logs = self.agent.tools.logs() if hasattr(self.agent.tools, "logs") else []
+        self._tool_log_offset = len(logs)
         confirm = getattr(console, "confirm", None)
         self.shell_runner = shell_runner or InteractiveShellRunner(config, confirm=confirm)
 
     async def run(self) -> None:
         self.console.title(self.session_mode)
+        if self.session_store is not None:
+            action = "Resumed" if self.resumed else "Started"
+            self.console.info(f"{action} session {self.session_store.session_id}")
+            if self.resumed:
+                self.session_store.record_resume()
         if self.session_mode == "shell":
             self.console.info(
                 "Shell mode enabled. Use !command to run in the workspace; "
@@ -73,6 +85,8 @@ class ChatSession:
             if command is not None:
                 should_continue = await self._handle_slash(command)
                 if not should_continue:
+                    if self.session_store is not None:
+                        self.session_store.close(self.agent.context)
                     return
                 continue
 
@@ -107,10 +121,20 @@ class ChatSession:
         return True
 
     async def _run_agent(self, user_input: str) -> None:
+        if self.session_store is not None:
+            self.session_store.record_user_message(user_input)
         try:
             answer = await self.agent.run(user_input)
             self.console.assistant(answer)
+            if self.session_store is not None:
+                self.session_store.record_assistant_message(answer)
+                self._record_new_tool_logs()
+                self.session_store.record_snapshot(self.agent.context, final_text=answer)
         except AsenError as exc:
+            if self.session_store is not None:
+                self.session_store.append_event("agent_error", error=str(exc))
+                self._record_new_tool_logs()
+                self.session_store.record_snapshot(self.agent.context)
             self.console.error(str(exc))
 
     async def _run_shell_command(self, raw_command: str) -> None:
@@ -124,3 +148,15 @@ class ChatSession:
         rendered = result.render()
         self.console.shell_result(command, rendered)
         self.agent.context.add_tool("shell", render_shell_context(command, rendered))
+        if self.session_store is not None:
+            self.session_store.record_shell_command(command, rendered, ok=result.ok)
+            self.session_store.record_snapshot(self.agent.context)
+
+    def _record_new_tool_logs(self) -> None:
+        if self.session_store is None or not hasattr(self.agent.tools, "logs"):
+            return
+        logs = self.agent.tools.logs()
+        new_logs = logs[self._tool_log_offset :]
+        if new_logs:
+            self.session_store.record_tool_logs(new_logs)
+            self._tool_log_offset = len(logs)

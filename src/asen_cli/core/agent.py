@@ -116,6 +116,12 @@ class Agent:
             max_tool_result_chars=config.max_tool_output_chars,
         )
 
+    def load_context_snapshot(self, snapshot: dict[str, Any]) -> None:
+        self.context.load_snapshot(snapshot)
+        self.plan_steps = [
+            step.model_copy() for step in self.context.plan_steps
+        ]
+
     async def run(self, user_input: str) -> str:
         self.context.add_user(user_input)
         for step in range(1, self.config.max_steps + 1):

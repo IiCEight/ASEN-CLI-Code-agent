@@ -7,6 +7,7 @@
 - 交互式终端对话（`asen chat`）、Shell-heavy 会话（`asen shell`）和一次性任务执行（`asen ask`）
 - 默认流式输出，支持 `--no-stream` 回退到一次性展示
 - 交互会话支持 `!command` 直接执行 shell，结果可回填到 Agent 上下文
+- 交互会话会自动保存到工作区 `.asen/sessions/`，支持 `asen session list` 和 `asen session resume`
 - OpenAI-compatible LLM 调用
 - JSON 工具调用协议：计划、最终回答、工具调用
 - 文件读写、目录列表、Shell 命令执行、网页获取
@@ -95,6 +96,16 @@ asen ask "运行 python hello.py" --workspace examples/demo_project --no-approva
 ```
 
 交互模式支持 slash commands：`/help`、`/tools`、`/config`、`/clear`、`/paste`、`/exit`。
+
+交互模式也支持 bang command：
+
+```text
+! ls
+! pytest -q
+! git status
+```
+
+每次 `asen chat` / `asen shell` 启动时，都会在当前 workspace 下创建一个新的 `.asen/sessions/<session_id>/` 目录，保存 `events.jsonl`、`meta.json` 和 `summary.md`。之后可以通过 `asen session list` 查看历史会话，再用 `asen session resume <id>` 恢复上下文继续工作。
 
 开启详细执行日志：
 

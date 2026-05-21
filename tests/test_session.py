@@ -1,32 +1,41 @@
+import json
+
 import pytest
 
 from asen_cli.config import AsenConfig
+from asen_cli.core.context_manager import ContextManager
 from asen_cli.core.session import ChatSession
+from asen_cli.core.session_store import SessionStore
+from asen_cli.core.token_budget import TokenBudget
 from asen_cli.tools.base import ToolResult
 
 
 class FakeTools:
+    def __init__(self):
+        self._logs = []
+
     def schemas(self):
         return [{"name": "read_file", "description": "Read a file."}]
 
-
-class FakeContext:
-    def __init__(self):
-        self.tool_messages = []
-
-    def add_tool(self, name, content):
-        self.tool_messages.append((name, content))
+    def logs(self):
+        return list(self._logs)
 
 
 class FakeAgent:
     def __init__(self):
         self.tools = FakeTools()
         self.calls = []
-        self.context = FakeContext()
+        self.context = ContextManager(
+            "system",
+            token_budget=TokenBudget(max_context_tokens=4_000, reserve_output_tokens=500),
+        )
 
     async def run(self, user_input):
         self.calls.append(user_input)
-        return f"answer: {user_input}"
+        self.context.add_user(user_input)
+        answer = f"answer: {user_input}"
+        self.context.add_assistant(answer)
+        return answer
 
 
 class FakeInputReader:
@@ -169,9 +178,10 @@ async def test_session_routes_bang_command_to_shell_and_context(tmp_path):
     assert agent.calls == ["summarize that"]
     assert ("shell_command", "pytest -q") in console.events
     assert any(event[0] == "shell_result" for event in console.events)
-    assert agent.context.tool_messages == [
-        ("shell", "command=pytest -q\nexit_code=1\npytest failed")
-    ]
+    tool_messages = [message for message in agent.context.messages if message.role == "tool"]
+    assert len(tool_messages) == 1
+    assert tool_messages[0].name == "shell"
+    assert "pytest failed" in tool_messages[0].content
 
 
 @pytest.mark.asyncio
@@ -192,3 +202,39 @@ async def test_shell_session_shows_shell_title_and_hint(tmp_path):
     assert console.events[0] == ("title", "shell")
     assert console.events[1][0] == "info"
     assert "Shell mode enabled" in console.events[1][1]
+
+
+@pytest.mark.asyncio
+async def test_session_store_persists_events_and_summary(tmp_path):
+    agent = FakeAgent()
+    console = RecordingConsole()
+    store = SessionStore.create(
+        AsenConfig(workspace=tmp_path, provider="openai", model="demo-model"),
+        session_mode="chat",
+        session_id="demo-session",
+    )
+    session = ChatSession(
+        agent=agent,
+        config=AsenConfig(workspace=tmp_path),
+        console=console,
+        input_reader=FakeInputReader(["hello session", "/exit"]),
+        shell_runner=FakeShellRunner(),
+        session_store=store,
+    )
+
+    await session.run()
+
+    raw_lines = store.events_path.read_text(encoding="utf-8").splitlines()
+    lines = [json.loads(line) for line in raw_lines]
+    event_types = [line["type"] for line in lines]
+    assert "session_started" in event_types
+    assert "user_message" in event_types
+    assert "assistant_message" in event_types
+    assert "context_snapshot" in event_types
+    assert "session_closed" in event_types
+    assert store.summary_path.exists()
+
+    reopened = SessionStore.open(tmp_path, "demo-session")
+    assert reopened.meta.turn_count == 1
+    assert reopened.meta.message_count >= 2
+    assert reopened.meta.summary_preview
