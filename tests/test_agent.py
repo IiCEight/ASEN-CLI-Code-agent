@@ -1,19 +1,32 @@
 import pytest
 
 from asen_cli.config import AsenConfig
-from asen_cli.core.agent import Agent, AgentEvents, parse_agent_response
+from asen_cli.core.agent import (
+    Agent,
+    AgentEvents,
+    _extract_partial_final_text,
+    parse_agent_response,
+)
 from asen_cli.tools.file import ReadFileTool, WriteFileTool
 from asen_cli.tools.registry import ToolRegistry
 
 
 class FakeLlm:
-    def __init__(self, responses):
+    def __init__(self, responses, *, stream_responses=None):
         self.responses = list(responses)
+        self.stream_responses = [list(chunks) for chunks in (stream_responses or [])]
         self.calls = []
+        self.stream_calls = []
 
     async def complete(self, messages, tools):
         self.calls.append((messages, tools))
         return self.responses.pop(0)
+
+    async def stream_complete(self, messages, tools):
+        self.stream_calls.append((messages, tools))
+        chunks = self.stream_responses.pop(0) if self.stream_responses else [self.responses.pop(0)]
+        for chunk in chunks:
+            yield chunk
 
 
 def test_parse_final_response():
@@ -50,6 +63,18 @@ def test_parse_plain_text_response_is_invalid():
     assert parsed.tool_calls == []
 
 
+def test_extract_partial_final_text_for_streaming_preview():
+    assert _extract_partial_final_text('{"final":"hello') == "hello"
+    assert _extract_partial_final_text('{"final_text":"line\\nnext') == "line\nnext"
+    assert _extract_partial_final_text('```json\n{"final":"你') == "你"
+
+
+def test_extract_partial_final_text_ignores_non_final_payloads():
+    assert _extract_partial_final_text('{"tool_calls":[') is None
+    assert _extract_partial_final_text('{"plan":[{"id":"1"') is None
+    assert _extract_partial_final_text("plain text") is None
+
+
 @pytest.mark.asyncio
 async def test_agent_returns_final_answer(tmp_path):
     llm = FakeLlm(['{"final": "hello"}'])
@@ -63,6 +88,8 @@ async def test_agent_returns_final_answer(tmp_path):
     result = await agent.run("say hi")
 
     assert result == "hello"
+    assert len(llm.calls) == 1
+    assert llm.stream_calls == []
 
 
 @pytest.mark.asyncio
@@ -86,6 +113,7 @@ async def test_agent_executes_tool_then_returns_final(tmp_path):
 
     assert result == "file says hello"
     assert len(llm.calls) == 2
+    assert llm.stream_calls == []
 
 
 @pytest.mark.asyncio
@@ -202,6 +230,38 @@ async def test_agent_emits_progress_events(tmp_path):
     assert any(event[0] == "raw" for event in events)
     assert ("tool_call", "read_file", {"path": "hello.txt"}) in events
     assert ("tool_result", "read_file", "hello") in events
+
+
+@pytest.mark.asyncio
+async def test_agent_streams_final_answer_events(tmp_path):
+    streamed_events = []
+    llm = FakeLlm(
+        [],
+        stream_responses=[['{"final":"he', 'llo\\nwo', 'rld"}']],
+    )
+    agent = Agent(
+        config=AsenConfig(workspace=tmp_path),
+        llm=llm,
+        tools=ToolRegistry([]),
+        system_prompt="system",
+        stream=True,
+        events=AgentEvents(
+            on_stream_delta=lambda chunk: streamed_events.append(("delta", chunk)),
+            on_stream_end=lambda: streamed_events.append(("end", None)),
+            on_llm_response=lambda raw: streamed_events.append(("raw", raw)),
+        ),
+    )
+
+    result = await agent.run("say hi")
+
+    assert result == "hello\nworld"
+    assert llm.calls == []
+    assert len(llm.stream_calls) == 1
+    assert streamed_events[0] == ("delta", "he")
+    assert streamed_events[1] == ("delta", "llo\nwo")
+    assert streamed_events[2] == ("delta", "rld")
+    assert streamed_events[3] == ("end", None)
+    assert streamed_events[4] == ("raw", '{"final":"hello\\nworld"}')
 
 
 @pytest.mark.asyncio

@@ -5,6 +5,7 @@ from typing import Any
 from rich import box
 from rich.align import Align
 from rich.console import Console, Group
+from rich.live import Live
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.prompt import Confirm
@@ -41,6 +42,9 @@ class AsenConsole:
     def __init__(self, *, verbose: bool = False) -> None:
         self.console = Console()
         self.verbose_enabled = verbose
+        self._stream_live: Live | None = None
+        self._stream_buffer = ""
+        self._last_streamed_message: str | None = None
 
     def title(self) -> None:
         banner = Text(BANNER, style="bold cyan")
@@ -65,31 +69,53 @@ class AsenConsole:
         self.title()
 
     def info(self, message: str) -> None:
+        self._finish_stream(remember=False)
         self.console.print(f"[cyan]{message}[/]")
 
     def success(self, message: str) -> None:
+        self._finish_stream(remember=False)
         self.console.print(f"[green]{message}[/]")
 
     def error(self, message: str) -> None:
+        self._finish_stream(remember=False)
         self.console.print(
             Panel(message, title="error", border_style="red", box=box.ROUNDED)
         )
 
     def assistant(self, message: str) -> None:
-        self.console.print(
-            Panel(
-                Markdown(message),
-                title="[bold green]asen[/]",
-                border_style="green",
-                box=box.ROUNDED,
-                padding=(1, 2),
+        self._finish_stream(remember=False)
+        if self._last_streamed_message == message:
+            self._last_streamed_message = None
+            return
+        self._last_streamed_message = None
+        self.console.print(self._assistant_panel(message))
+
+    def stream_delta(self, chunk: str) -> None:
+        if not chunk:
+            return
+        self._last_streamed_message = None
+        self._stream_buffer += chunk
+        panel = self._assistant_panel(self._stream_buffer)
+        if self._stream_live is None:
+            self._stream_live = Live(
+                panel,
+                console=self.console,
+                refresh_per_second=12,
+                transient=False,
             )
-        )
+            self._stream_live.start()
+            return
+        self._stream_live.update(panel, refresh=True)
+
+    def stream_end(self) -> None:
+        self._finish_stream(remember=True)
 
     def thinking(self, step: int) -> None:
+        self._finish_stream(remember=False)
         self.console.print(f"[bright_cyan]╭─ thinking[/] [dim]step {step}[/]")
 
     def plan(self, steps: list[PlanStep]) -> None:
+        self._finish_stream(remember=False)
         table = Table(
             title="Execution Plan",
             box=box.SIMPLE_HEAVY,
@@ -108,11 +134,13 @@ class AsenConsole:
         self.console.print(table)
 
     def plan_step(self, step: PlanStep) -> None:
+        self._finish_stream(remember=False)
         self.console.print(
             f"[blue]├─ plan[/] {step.id}. {step.content} [{_render_status(step.status)}]"
         )
 
     def tool_call(self, name: str, arguments: dict[str, Any]) -> None:
+        self._finish_stream(remember=False)
         if self.verbose_enabled:
             self.console.print(
                 Panel(
@@ -126,6 +154,7 @@ class AsenConsole:
         self.console.print(f"[yellow]├─ tool[/] [bold]{name}[/]")
 
     def tool_result(self, name: str, rendered: str) -> None:
+        self._finish_stream(remember=False)
         if self.verbose_enabled:
             self.console.print(
                 Panel(
@@ -148,6 +177,7 @@ class AsenConsole:
             )
 
     def tools(self, schemas: list[dict[str, Any]]) -> None:
+        self._finish_stream(remember=False)
         table = Table(
             title="Agent Toolbelt",
             box=box.SIMPLE_HEAVY,
@@ -161,6 +191,7 @@ class AsenConsole:
         self.console.print(table)
 
     def config(self, data: dict[str, Any]) -> None:
+        self._finish_stream(remember=False)
         table = Table(
             title="Runtime Config",
             box=box.SIMPLE_HEAVY,
@@ -174,6 +205,7 @@ class AsenConsole:
         self.console.print(table)
 
     def help(self, message: str) -> None:
+        self._finish_stream(remember=False)
         self.console.print(
             Panel(
                 message,
@@ -185,6 +217,7 @@ class AsenConsole:
         )
 
     def paste_hint(self) -> None:
+        self._finish_stream(remember=False)
         self.console.print(
             Panel(
                 "Paste multiline input below. Finish with a single EOF line.",
@@ -195,13 +228,16 @@ class AsenConsole:
         )
 
     def goodbye(self) -> None:
+        self._finish_stream(remember=False)
         self.console.print("[dim]session closed. bye.[/]")
 
     def verbose(self, message: str) -> None:
+        self._finish_stream(remember=False)
         if self.verbose_enabled:
             self.console.print(f"[dim]{message}[/]")
 
     def confirm(self, message: str) -> bool:
+        self._finish_stream(remember=False)
         self.console.print(
             Panel(message, title="approval required", border_style="magenta", box=box.ROUNDED)
         )
@@ -211,11 +247,35 @@ class AsenConsole:
         return AgentEvents(
             on_thinking=self.thinking,
             on_llm_response=self.raw_llm_response,
+            on_stream_delta=self.stream_delta,
+            on_stream_end=self.stream_end,
             on_plan=self.plan,
             on_plan_step=self.plan_step,
             on_tool_call=self.tool_call,
             on_tool_result=self.tool_result,
         )
+
+    def _assistant_panel(self, message: str) -> Panel:
+        return Panel(
+            Markdown(message or " "),
+            title="[bold green]asen[/]",
+            border_style="green",
+            box=box.ROUNDED,
+            padding=(1, 2),
+        )
+
+    def _finish_stream(self, *, remember: bool) -> None:
+        if self._stream_live is None:
+            if not remember and self._stream_buffer:
+                self._stream_buffer = ""
+            return
+        self._stream_live.update(self._assistant_panel(self._stream_buffer), refresh=True)
+        self._stream_live.stop()
+        self._stream_live = None
+        self._last_streamed_message = (
+            self._stream_buffer if remember and self._stream_buffer else None
+        )
+        self._stream_buffer = ""
 
 
 def _render_status(status: str) -> str:

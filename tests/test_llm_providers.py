@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import pytest
 
@@ -38,6 +40,40 @@ async def test_openai_compatible_client_complete():
 
 
 @pytest.mark.asyncio
+async def test_openai_compatible_client_stream_complete():
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["payload"] = request.read().decode()
+        body = "\n".join(
+            [
+                "data: "
+                + json.dumps({"choices": [{"delta": {"content": '{\"final\":\"he'}}]}),
+                "data: "
+                + json.dumps({"choices": [{"delta": {"content": 'llo\"}'}}]}),
+                "data: [DONE]",
+                "",
+            ]
+        )
+        return httpx.Response(200, text=body)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        llm = OpenAICompatibleClient(
+            AsenConfig(api_key="sk-test", base_url="https://example.test/v1"),
+            client=client,
+        )
+        chunks = [
+            chunk
+            async for chunk in llm.stream_complete([{"role": "user", "content": "hi"}], [])
+        ]
+
+    assert chunks == ['{"final":"he', 'llo"}']
+    assert captured["url"] == "https://example.test/v1/chat/completions"
+    assert '"stream":true' in captured["payload"].replace(" ", "")
+
+
+@pytest.mark.asyncio
 async def test_openai_compatible_client_requires_api_key():
     llm = OpenAICompatibleClient(AsenConfig(api_key=None))
 
@@ -65,6 +101,38 @@ async def test_ollama_client_complete():
     assert result == '{"final":"local"}'
     assert captured["url"] == "http://localhost:11434/api/chat"
     assert '"model":"llama3.1"' in captured["payload"].replace(" ", "")
+
+
+@pytest.mark.asyncio
+async def test_ollama_client_stream_complete():
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["payload"] = request.read().decode()
+        body = "\n".join(
+            [
+                json.dumps({"message": {"content": '{\"final\":\"lo'}}),
+                json.dumps({"message": {"content": 'cal\"}'}}),
+                "",
+            ]
+        )
+        return httpx.Response(200, text=body)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        llm = OllamaClient(
+            AsenConfig(provider="ollama", model="llama3.1"),
+            base_url="http://localhost:11434",
+            client=client,
+        )
+        chunks = [
+            chunk
+            async for chunk in llm.stream_complete([{"role": "user", "content": "hi"}], [])
+        ]
+
+    assert chunks == ['{"final":"lo', 'cal"}']
+    assert captured["url"] == "http://localhost:11434/api/chat"
+    assert '"stream":true' in captured["payload"].replace(" ", "")
 
 
 def test_factory_creates_ollama_client():

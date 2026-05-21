@@ -51,6 +51,17 @@ class OllamaClient(BaseLlmClient):
     ) -> AsyncIterator[str]:
         payload = self._payload(messages, tools, stream=True)
         try:
+            if self.client is not None:
+                async with self.client.stream("POST", self._endpoint(), json=payload) as response:
+                    response.raise_for_status()
+                    async for line in response.aiter_lines():
+                        if not line.strip():
+                            continue
+                        chunk = _extract_ollama_stream_delta(line)
+                        if chunk:
+                            yield chunk
+                return
+
             async with (
                 httpx.AsyncClient(timeout=120) as client,
                 client.stream("POST", self._endpoint(), json=payload) as response,

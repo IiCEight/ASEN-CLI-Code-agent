@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -24,11 +24,19 @@ class LlmLike(Protocol):
         tools: list[dict[str, Any]],
     ) -> str: ...
 
+    async def stream_complete(
+        self,
+        messages: list[dict[str, str]],
+        tools: list[dict[str, Any]],
+    ) -> AsyncIterator[str]: ...
+
 
 @dataclass(slots=True)
 class AgentEvents:
     on_thinking: Callable[[int], None] | None = None
     on_llm_response: Callable[[str], None] | None = None
+    on_stream_delta: Callable[[str], None] | None = None
+    on_stream_end: Callable[[], None] | None = None
     on_plan: Callable[[list[PlanStep]], None] | None = None
     on_plan_step: Callable[[PlanStep], None] | None = None
     on_tool_call: Callable[[str, dict[str, Any]], None] | None = None
@@ -41,6 +49,14 @@ class AgentEvents:
     def llm_response(self, raw_response: str) -> None:
         if self.on_llm_response:
             self.on_llm_response(raw_response)
+
+    def stream_delta(self, chunk: str) -> None:
+        if self.on_stream_delta:
+            self.on_stream_delta(chunk)
+
+    def stream_end(self) -> None:
+        if self.on_stream_end:
+            self.on_stream_end()
 
     def plan(self, steps: list[PlanStep]) -> None:
         if self.on_plan:
@@ -60,6 +76,17 @@ class AgentEvents:
 
 
 JSON_BLOCK_PATTERN = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
+FINAL_FIELD_PATTERN = re.compile(r'^\{\s*"(?P<field>final|final_text)"\s*:\s*"')
+JSON_ESCAPE_SEQUENCES = {
+    '"': '"',
+    "\\": "\\",
+    "/": "/",
+    "b": "\b",
+    "f": "\f",
+    "n": "\n",
+    "r": "\r",
+    "t": "\t",
+}
 
 
 class Agent:
@@ -71,11 +98,13 @@ class Agent:
         tools: ToolRegistry,
         system_prompt: str,
         events: AgentEvents | None = None,
+        stream: bool = False,
     ) -> None:
         self.config = config
         self.llm = llm
         self.tools = tools
         self.events = events or AgentEvents()
+        self.stream = stream
         self.plan_steps: list[PlanStep] = []
         self.context = ContextManager(
             system_prompt,
@@ -91,9 +120,9 @@ class Agent:
         self.context.add_user(user_input)
         for step in range(1, self.config.max_steps + 1):
             self.events.thinking(step)
-            raw_response = await self.llm.complete(
-                self.context.as_openai_messages(), self.tools.schemas()
-            )
+            messages = self.context.as_openai_messages()
+            tool_schemas = self.tools.schemas()
+            raw_response = await self._complete_once(messages, tool_schemas)
             self.events.llm_response(raw_response)
             parsed = parse_agent_response(raw_response)
             if parsed.invalid_reason:
@@ -130,6 +159,28 @@ class Agent:
         )
         self.context.add_assistant(final)
         return final
+
+    async def _complete_once(
+        self,
+        messages: list[dict[str, str]],
+        tools: list[dict[str, Any]],
+    ) -> str:
+        if not self.stream:
+            return await self.llm.complete(messages, tools)
+
+        raw_response = ""
+        streamed_preview = ""
+        try:
+            async for chunk in self.llm.stream_complete(messages, tools):
+                raw_response += chunk
+                preview = _extract_partial_final_text(raw_response) or ""
+                delta = preview[len(streamed_preview) :]
+                if delta:
+                    self.events.stream_delta(delta)
+                streamed_preview = preview
+        finally:
+            self.events.stream_end()
+        return raw_response
 
     def _set_plan(self, steps: list[PlanStep]) -> None:
         self.plan_steps = [
@@ -247,6 +298,17 @@ def _format_tool_failure_feedback(tool_name: str, result: Any) -> str:
     )
 
 
+def _extract_partial_final_text(text: str) -> str | None:
+    payload = _extract_json_stream_candidate(text)
+    if payload is None:
+        return None
+    match = FINAL_FIELD_PATTERN.match(payload)
+    if match is None:
+        return None
+    value, _closed = _decode_partial_json_string(payload[match.end() :])
+    return value
+
+
 def _extract_json_payload(text: str) -> str | None:
     stripped = text.strip()
     if stripped.startswith("{") and stripped.endswith("}"):
@@ -255,6 +317,51 @@ def _extract_json_payload(text: str) -> str | None:
     if match:
         return match.group(1).strip()
     return None
+
+
+def _extract_json_stream_candidate(text: str) -> str | None:
+    stripped = text.lstrip()
+    if stripped.startswith("{"):
+        return stripped
+    if not stripped.startswith("```"):
+        return None
+    newline = stripped.find("\n")
+    if newline == -1:
+        return None
+    return stripped[newline + 1 :].lstrip()
+
+
+def _decode_partial_json_string(text: str) -> tuple[str, bool]:
+    chars: list[str] = []
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if char == '"':
+            return "".join(chars), True
+        if char != "\\":
+            chars.append(char)
+            index += 1
+            continue
+
+        index += 1
+        if index >= len(text):
+            return "".join(chars), False
+
+        escaped = text[index]
+        if escaped == "u":
+            hex_digits = text[index + 1 : index + 5]
+            if len(hex_digits) < 4 or not re.fullmatch(r"[0-9a-fA-F]{4}", hex_digits):
+                return "".join(chars), False
+            chars.append(chr(int(hex_digits, 16)))
+            index += 5
+            continue
+
+        mapped = JSON_ESCAPE_SEQUENCES.get(escaped)
+        if mapped is None:
+            return "".join(chars), False
+        chars.append(mapped)
+        index += 1
+    return "".join(chars), False
 
 
 def load_system_prompt() -> str:

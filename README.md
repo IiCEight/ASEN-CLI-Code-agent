@@ -5,6 +5,7 @@
 ## 功能
 
 - 交互式终端对话（`asen chat`）和一次性任务执行（`asen ask`）
+- 默认流式输出，支持 `--no-stream` 回退到一次性展示
 - OpenAI-compatible LLM 调用
 - JSON 工具调用协议：计划、最终回答、工具调用
 - 文件读写、目录列表、Shell 命令执行、网页获取
@@ -100,6 +101,14 @@ asen ask "运行 python hello.py" --workspace examples/demo_project --no-approva
 asen chat --workspace examples/demo_project --verbose
 ```
 
+关闭流式输出，回退到完整回答后再展示：
+
+```bash
+asen ask "解释 hello.py" --workspace examples/demo_project --no-stream
+```
+
+默认流式模式下，如果模型直接返回 `{"final": ...}`，终端会用 Rich Live 边生成边刷新；如果模型返回 `{"tool_calls": ...}` 或 `{"plan": ...}`，则不会把原始 JSON 流直接暴露给用户，而是在完整解析后切换到工具执行/计划展示。
+
 ## 工具协议
 
 计划：
@@ -127,6 +136,8 @@ v0.7 起，新增上下文压缩能力：`ContextManager` 会按 token budget �
 v0.8 起，新增多层配置系统：支持 `~/.asen/config.yaml` 全局配置、`.asen/config.yaml` 项目配置，以及 `asen config init/get/set` 子命令。完整说明见 `docs/config_upgrade.md`。
 
 v0.9 起，新增多模型 Provider：`openai`、`openai-compatible`、`deepseek`、`kimi`、`tongyi`、`zhipu` 走 OpenAI-compatible adapter，`ollama` 走本地 `/api/chat` adapter。完整说明见 `docs/provider_upgrade.md`。
+
+v1.0 起，新增流式输出：CLI 默认走 provider 的 `stream_complete()`，`AsenConsole` 使用 Rich Live 渲染最终回答；`asen chat` / `asen ask` 支持 `--stream/--no-stream`。为了兼容当前 JSON 协议，Agent 只在增量识别到 `final` / `final_text` 字段时流式展示文本，遇到 `plan` / `tool_calls` 会先完成解析再进入后续执行。完整说明见 `docs/streaming_output_upgrade.md`。
 
 ## 安全设计
 

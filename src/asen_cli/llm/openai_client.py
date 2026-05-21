@@ -47,6 +47,25 @@ class OpenAICompatibleClient(BaseLlmClient):
         headers = self._headers()
         endpoint = self._endpoint()
         try:
+            if self.client is not None:
+                async with self.client.stream(
+                    "POST",
+                    endpoint,
+                    json=payload,
+                    headers=headers,
+                ) as response:
+                    response.raise_for_status()
+                    async for line in response.aiter_lines():
+                        if not line.startswith("data: "):
+                            continue
+                        raw = line.removeprefix("data: ").strip()
+                        if raw == "[DONE]":
+                            break
+                        chunk = _extract_openai_stream_delta(raw)
+                        if chunk:
+                            yield chunk
+                return
+
             async with (
                 httpx.AsyncClient(timeout=60) as client,
                 client.stream(

@@ -60,9 +60,13 @@ def chat(
         bool,
         typer.Option("--verbose", "-v", help="Show agent internals."),
     ] = False,
+    stream: Annotated[
+        bool,
+        typer.Option("--stream/--no-stream", help="Stream assistant output as it arrives."),
+    ] = True,
 ) -> None:
     """Start an interactive coding-agent session."""
-    asyncio.run(_chat(config, workspace, no_approval, verbose))
+    asyncio.run(_chat(config, workspace, no_approval, verbose, stream))
 
 
 @app.command()
@@ -78,9 +82,13 @@ def ask(
         bool,
         typer.Option("--verbose", "-v", help="Show agent internals."),
     ] = False,
+    stream: Annotated[
+        bool,
+        typer.Option("--stream/--no-stream", help="Stream assistant output as it arrives."),
+    ] = True,
 ) -> None:
     """Run a one-shot task and print the final answer."""
-    asyncio.run(_ask(task, config, workspace, no_approval, verbose))
+    asyncio.run(_ask(task, config, workspace, no_approval, verbose, stream))
 
 
 @config_app.callback(invoke_without_command=True)
@@ -194,9 +202,10 @@ async def _chat(
     workspace: Path | None,
     no_approval: bool,
     verbose: bool,
+    stream: bool,
 ) -> None:
     console = AsenConsole(verbose=verbose)
-    agent = _build_agent(config_path, workspace, no_approval, console)
+    agent = _build_agent(config_path, workspace, no_approval, console, stream)
     session = ChatSession(
         agent=agent,
         config=agent.config,
@@ -212,9 +221,10 @@ async def _ask(
     workspace: Path | None,
     no_approval: bool,
     verbose: bool,
+    stream: bool,
 ) -> None:
     console = AsenConsole(verbose=verbose)
-    agent = _build_agent(config_path, workspace, no_approval, console)
+    agent = _build_agent(config_path, workspace, no_approval, console, stream)
     try:
         answer = await agent.run(task)
         console.assistant(answer)
@@ -228,6 +238,7 @@ def _build_agent(
     workspace: Path | None,
     no_approval: bool,
     console: AsenConsole,
+    stream: bool,
 ) -> Agent:
     overrides = {"require_approval": False} if no_approval else None
     cfg = load_config(config_path, workspace=workspace, overrides=overrides)
@@ -238,6 +249,7 @@ def _build_agent(
         tools=registry,
         system_prompt=load_system_prompt(),
         events=console.agent_events(),
+        stream=stream,
     )
 
 
