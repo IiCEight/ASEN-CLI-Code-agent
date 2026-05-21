@@ -83,6 +83,24 @@ asen config get
 asen chat --workspace examples/demo_project
 ```
 
+Shell-heavy 会话：
+
+```bash
+asen shell --workspace examples/demo_project
+```
+
+查看当前工作区的历史会话：
+
+```bash
+asen session list --workspace examples/demo_project
+```
+
+恢复指定会话：
+
+```bash
+asen session resume 2026-05-21-160955-asen-cli --workspace examples/demo_project
+```
+
 一次性任务：
 
 ```bash
@@ -105,7 +123,24 @@ asen ask "运行 python hello.py" --workspace examples/demo_project --no-approva
 ! git status
 ```
 
-每次 `asen chat` / `asen shell` 启动时，都会在当前 workspace 下创建一个新的 `.asen/sessions/<session_id>/` 目录，保存 `events.jsonl`、`meta.json` 和 `summary.md`。之后可以通过 `asen session list` 查看历史会话，再用 `asen session resume <id>` 恢复上下文继续工作。
+### 会话持久化
+
+每次 `asen chat` / `asen shell` 启动时，都会在当前 workspace 下创建一个新的 `.asen/sessions/<session_id>/` 目录：
+
+```text
+.asen/sessions/<session_id>/
+├── events.jsonl
+├── meta.json
+└── summary.md
+```
+
+其中：
+
+- `events.jsonl` 记录 `user_message`、`assistant_message`、`tool_call`、`shell_command`、`context_snapshot` 等事件
+- `meta.json` 保存 `session_id`、`session_mode`、模型信息、更新时间、轮次、工具调用次数和摘要预览
+- `summary.md` 保存最终修改摘要，或者最近一次回答的摘要
+
+`asen session list` 会按最近更新时间倒序展示会话；`asen session resume <id>` 支持完整 `session_id`，也支持唯一前缀恢复。如果前缀命中多个会话，会直接报错，避免恢复到错误上下文。
 
 开启详细执行日志：
 
@@ -157,9 +192,23 @@ v1.0 起，新增流式输出：CLI 默认走 provider 的 `stream_complete()`�
 
 ## 测试
 
+全量回归：
+
 ```bash
 pytest
 ruff check .
 ```
 
-测试覆盖配置加载、路径安全、工具行为、网页抓取 mock、Agent 工具调用循环和最大轮次保护。
+会话持久化相关回归：
+
+```bash
+pytest tests/test_session_store.py tests/test_session.py tests/test_streaming_cli.py tests/test_context_manager.py -q
+```
+
+Shell 模式与安全相关回归：
+
+```bash
+pytest tests/test_shell_mode.py tests/test_safety.py tests/test_tools_shell.py -q
+```
+
+测试覆盖配置加载、路径安全、工具行为、网页抓取 mock、Agent 工具调用循环、会话保存与恢复，以及 Shell 执行安全边界。
