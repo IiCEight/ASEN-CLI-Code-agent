@@ -24,4 +24,5 @@ examples/config.yaml
 *.html
 .ipynb_checkpoints/
 research_report_*.md
+gen.py
 

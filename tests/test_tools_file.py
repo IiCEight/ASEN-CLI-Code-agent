@@ -48,16 +48,20 @@ async def test_write_file_requires_approval(tmp_path):
 
     assert not result.ok
     assert not (tmp_path / "new.txt").exists()
+    assert not (tmp_path / ".asen" / "checkpoints").exists()
 
 
 @pytest.mark.asyncio
-async def test_write_file_after_approval(tmp_path):
+async def test_write_file_after_approval_creates_checkpoint(tmp_path):
     tool = WriteFileTool(tmp_path, require_approval=True, confirm=lambda _: True)
 
     result = await tool.execute({"path": "new.txt", "content": "hello"})
 
     assert result.ok
     assert (tmp_path / "new.txt").read_text(encoding="utf-8") == "hello"
+    checkpoints = list((tmp_path / ".asen" / "checkpoints").glob("*/meta.json"))
+    assert len(checkpoints) == 1
+    assert "Checkpoint saved as" in result.content
 
 
 @pytest.mark.asyncio

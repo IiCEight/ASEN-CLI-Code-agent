@@ -4,6 +4,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from ..core.checkpoint_store import CheckpointStore, render_diff
 from ..utils.errors import SafetyError
 from ..utils.safety import resolve_workspace_path, truncate_text
 from .base import ApprovalCallback, BaseTool, ToolResult
@@ -33,7 +34,11 @@ class ReadFileChunkArgs(BaseModel):
         ...,
         description="Relative or absolute path inside the workspace.",
     )
-    start_line: int = Field(default=1, ge=1, description="1-based line number to start from.")
+    start_line: int = Field(
+        default=1,
+        ge=1,
+        description="1-based line number to start from.",
+    )
     max_lines: int = Field(default=200, ge=1, le=1000, description="Maximum lines to read.")
 
 
@@ -145,32 +150,61 @@ class WriteFileTool(BaseTool):
         *,
         require_approval: bool = True,
         confirm: ApprovalCallback | None = None,
+        max_output_chars: int = 12_000,
     ) -> None:
         self.workspace = workspace
         self.require_approval = require_approval
         self.confirm = confirm
+        self.max_output_chars = max_output_chars
 
     async def _run(self, args: BaseModel) -> ToolResult:
         typed_args = WriteFileArgs.model_validate(args)
         try:
-            path = resolve_workspace_path(self.workspace, typed_args.path)
-            if path.exists() and not typed_args.overwrite:
+            workspace_root = self.workspace.resolve()
+            path = resolve_workspace_path(workspace_root, typed_args.path)
+            existed_before = path.exists()
+            if existed_before and not typed_args.overwrite:
                 return ToolResult.failure(
                     f"File already exists: {path}",
                     error_type="file_exists",
                     retryable=True,
                 )
+
+            original = path.read_text(encoding="utf-8") if existed_before else None
+            rel = path.resolve().relative_to(workspace_root).as_posix()
+            diff = render_diff(rel, original, typed_args.content)
+            rendered_diff = truncate_text(diff or "No changes.", self.max_output_chars)
+            if original == typed_args.content:
+                return ToolResult.success("No changes.\n" + rendered_diff)
+
             if self.require_approval:
-                prompt = f"Write {len(typed_args.content)} chars to {path}?"
+                prompt = f"Write {len(typed_args.content)} chars to {path}?\n{rendered_diff}"
                 if self.confirm is None or not self.confirm(prompt):
                     return ToolResult.failure(
                         "Write rejected by user",
                         error_type="user_rejected",
                         retryable=False,
                     )
+
+            checkpoint = CheckpointStore.create_file_checkpoint(
+                workspace_root,
+                tool_name=self.name,
+                path=path,
+                before=original,
+                after=typed_args.content,
+            )
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(typed_args.content, encoding="utf-8")
-            return ToolResult.success(f"Wrote {len(typed_args.content)} chars to {path}")
+            checkpoint_note = (
+                f" Checkpoint saved as {checkpoint.checkpoint_id}."
+                if checkpoint is not None
+                else ""
+            )
+            message = (
+                f"Wrote {len(typed_args.content)} chars to {path}."
+                f"{checkpoint_note}\n{rendered_diff}"
+            )
+            return ToolResult.success(message)
         except SafetyError as exc:
             return ToolResult.failure(str(exc), error_type="safety_error", retryable=False)
         except OSError as exc:

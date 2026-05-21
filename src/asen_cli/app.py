@@ -17,6 +17,7 @@ from .config import (
     set_config_value,
 )
 from .core.agent import Agent, load_system_prompt
+from .core.checkpoint_store import CheckpointStore
 from .core.session import ChatSession
 from .core.session_store import SessionStore
 from .core.shell_mode import InteractiveShellRunner
@@ -38,6 +39,10 @@ config_app = typer.Typer(
 )
 session_app = typer.Typer(
     help="List and resume saved interactive sessions.",
+    no_args_is_help=True,
+)
+checkpoint_app = typer.Typer(
+    help="List, diff, and restore saved checkpoints.",
     no_args_is_help=True,
 )
 
@@ -284,8 +289,94 @@ def session_resume(
     )
 
 
+@checkpoint_app.command("list")
+def checkpoint_list(
+    config: Annotated[Path | None, typer.Option("--config", "-c")] = None,
+    workspace: Annotated[Path | None, typer.Option("--workspace", "-w")] = None,
+) -> None:
+    """List saved checkpoints in the current workspace."""
+    console = AsenConsole()
+    try:
+        cfg = load_config(config, workspace=workspace)
+        checkpoints = CheckpointStore.list(cfg.workspace)
+        if not checkpoints:
+            console.info("No checkpoints yet. Modify files with asen to create one.")
+            return
+        rows = [
+            {
+                "checkpoint_id": item.checkpoint_id,
+                "tool_name": item.tool_name,
+                "updated_at": _compact_timestamp(item.updated_at),
+                "file_count": item.file_count,
+                "summary_preview": item.summary_preview or item.title,
+            }
+            for item in checkpoints
+        ]
+        console.checkpoints(rows)
+    except AsenError as exc:
+        console.error(str(exc))
+        raise typer.Exit(code=1) from exc
+
+
+@checkpoint_app.command("diff")
+def checkpoint_diff(
+    checkpoint_id: Annotated[
+        str,
+        typer.Argument(help="Checkpoint id or unique prefix to inspect."),
+    ],
+    config: Annotated[Path | None, typer.Option("--config", "-c")] = None,
+    workspace: Annotated[Path | None, typer.Option("--workspace", "-w")] = None,
+) -> None:
+    """Show the captured diff for a checkpoint."""
+    console = AsenConsole()
+    try:
+        cfg = load_config(config, workspace=workspace)
+        checkpoint = CheckpointStore.open(cfg.workspace, checkpoint_id)
+        console.checkpoint_diff(checkpoint.checkpoint_id, checkpoint.render_diff())
+    except AsenError as exc:
+        console.error(str(exc))
+        raise typer.Exit(code=1) from exc
+
+
+@checkpoint_app.command("restore")
+def checkpoint_restore(
+    checkpoint_id: Annotated[
+        str,
+        typer.Argument(help="Checkpoint id or unique prefix to restore."),
+    ],
+    config: Annotated[Path | None, typer.Option("--config", "-c")] = None,
+    workspace: Annotated[Path | None, typer.Option("--workspace", "-w")] = None,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Restore without interactive confirmation."),
+    ] = False,
+) -> None:
+    """Restore files captured by a checkpoint."""
+    console = AsenConsole()
+    try:
+        cfg = load_config(config, workspace=workspace)
+        checkpoint = CheckpointStore.open(cfg.workspace, checkpoint_id)
+        if not force:
+            prompt = (
+                f"Restore checkpoint {checkpoint.checkpoint_id}?\n"
+                f"This will revert {checkpoint.meta.file_count} file(s).\n"
+                f"{checkpoint.meta.summary_preview}"
+            )
+            if not console.confirm(prompt):
+                console.info("Restore cancelled.")
+                return
+        actions = checkpoint.restore()
+        console.success(f"Restored checkpoint {checkpoint.checkpoint_id}")
+        for action in actions:
+            console.info(action)
+    except AsenError as exc:
+        console.error(str(exc))
+        raise typer.Exit(code=1) from exc
+
+
 app.add_typer(config_app, name="config")
 app.add_typer(session_app, name="session")
+app.add_typer(checkpoint_app, name="checkpoint")
 
 
 async def _chat(

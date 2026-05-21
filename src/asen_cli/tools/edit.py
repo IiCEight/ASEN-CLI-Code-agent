@@ -7,6 +7,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from ..core.checkpoint_store import CheckpointStore
 from ..utils.errors import SafetyError
 from ..utils.safety import resolve_workspace_path, truncate_text
 from .base import ApprovalCallback, BaseTool, ToolResult
@@ -87,6 +88,7 @@ class ReplaceInFileTool(BaseTool):
                 require_approval=self.require_approval,
                 confirm=self.confirm,
                 max_output_chars=self.max_output_chars,
+                tool_name=self.name,
             )
         except SafetyError as exc:
             return ToolResult.failure(str(exc), error_type="safety_error", retryable=False)
@@ -131,6 +133,7 @@ class ApplyPatchTool(BaseTool):
                 require_approval=self.require_approval,
                 confirm=self.confirm,
                 max_output_chars=self.max_output_chars,
+                tool_name=self.name,
             )
         except PatchApplyError as exc:
             return ToolResult.failure(str(exc), error_type="patch_conflict", retryable=True)
@@ -165,6 +168,7 @@ def _maybe_write_diff_first(
     require_approval: bool,
     confirm: ApprovalCallback | None,
     max_output_chars: int,
+    tool_name: str,
 ) -> ToolResult:
     diff = _unified_diff(workspace, path, original, updated)
     rendered_diff = truncate_text(diff or "No changes.", max_output_chars)
@@ -181,11 +185,25 @@ def _maybe_write_diff_first(
                 retryable=False,
             )
     snapshot_path = _create_snapshot(workspace, path, original)
+    checkpoint = CheckpointStore.create_file_checkpoint(
+        workspace.resolve(),
+        tool_name=tool_name,
+        path=path,
+        before=original,
+        after=updated,
+    )
     path.write_text(updated, encoding="utf-8")
     rel_snapshot = snapshot_path.relative_to(workspace.resolve()).as_posix()
-    return ToolResult.success(
-        f"Applied edit to {path}. Snapshot saved at {rel_snapshot}.\n{rendered_diff}"
+    checkpoint_note = (
+        f" Checkpoint saved as {checkpoint.checkpoint_id}."
+        if checkpoint is not None
+        else ""
     )
+    message = (
+        f"Applied edit to {path}. Snapshot saved at {rel_snapshot}."
+        f"{checkpoint_note}\n{rendered_diff}"
+    )
+    return ToolResult.success(message)
 
 
 def _unified_diff(workspace: Path, path: Path, original: str, updated: str) -> str:

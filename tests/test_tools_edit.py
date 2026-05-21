@@ -51,7 +51,7 @@ async def test_replace_in_file_requires_unique_match(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_replace_in_file_after_approval_writes_and_snapshots(tmp_path):
+async def test_replace_in_file_after_approval_writes_and_checkpoints(tmp_path):
     target = tmp_path / "hello.py"
     target.write_text("print('old')\n", encoding="utf-8")
     tool = ReplaceInFileTool(
@@ -68,8 +68,11 @@ async def test_replace_in_file_after_approval_writes_and_snapshots(tmp_path):
     assert result.ok
     assert target.read_text(encoding="utf-8") == "print('new')\n"
     snapshots = list((tmp_path / ".asen" / "snapshots").rglob("hello.py"))
+    checkpoints = list((tmp_path / ".asen" / "checkpoints").glob("*/meta.json"))
     assert len(snapshots) == 1
     assert snapshots[0].read_text(encoding="utf-8") == "print('old')\n"
+    assert len(checkpoints) == 1
+    assert "Checkpoint saved as" in result.content
 
 
 @pytest.mark.asyncio
@@ -121,7 +124,7 @@ async def test_apply_patch_dry_run(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_apply_patch_writes_after_approval(tmp_path):
+async def test_apply_patch_writes_after_approval_and_creates_checkpoint(tmp_path):
     target = tmp_path / "hello.py"
     original = "one\ntwo\nthree\n"
     updated = "one\nTWO\nthree\n"
@@ -146,6 +149,8 @@ async def test_apply_patch_writes_after_approval(tmp_path):
     assert result.ok
     assert target.read_text(encoding="utf-8") == updated
     assert list((tmp_path / ".asen" / "snapshots").rglob("hello.py"))
+    assert list((tmp_path / ".asen" / "checkpoints").glob("*/meta.json"))
+    assert "Checkpoint saved as" in result.content
 
 
 @pytest.mark.asyncio

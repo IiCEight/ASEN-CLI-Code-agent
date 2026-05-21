@@ -30,6 +30,7 @@ def create_default_registry(
                 config.workspace,
                 require_approval=config.require_approval,
                 confirm=confirm,
+                max_output_chars=config.max_tool_output_chars,
             ),
             ReplaceInFileTool(
                 config.workspace,

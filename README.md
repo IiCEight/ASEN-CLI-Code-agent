@@ -101,6 +101,24 @@ asen session list --workspace examples/demo_project
 asen session resume 2026-05-21-160955-asen-cli --workspace examples/demo_project
 ```
 
+查看当前工作区的历史 checkpoint：
+
+```bash
+asen checkpoint list --workspace examples/demo_project
+```
+
+查看某个 checkpoint 的 diff：
+
+```bash
+asen checkpoint diff 2026-05-21-170512-write-file --workspace examples/demo_project
+```
+
+恢复某个 checkpoint：
+
+```bash
+asen checkpoint restore 2026-05-21-170512-write-file --workspace examples/demo_project
+```
+
 一次性任务：
 
 ```bash
@@ -211,4 +229,4 @@ Shell 模式与安全相关回归：
 pytest tests/test_shell_mode.py tests/test_safety.py tests/test_tools_shell.py -q
 ```
 
-测试覆盖配置加载、路径安全、工具行为、网页抓取 mock、Agent 工具调用循环、会话保存与恢复，以及 Shell 执行安全边界。
+测试覆盖配置加载、路径安全、工具行为、网页抓取 mock、Agent 工具调用循环、会话保存与恢复、checkpoint 捕获与回滚，以及 Shell 执行安全边界。

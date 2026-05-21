@@ -255,6 +255,40 @@ class AsenConsole:
             )
         self.console.print(table)
 
+    def checkpoints(self, rows: list[dict[str, Any]]) -> None:
+        self._finish_stream(remember=False)
+        table = Table(
+            title="Saved Checkpoints",
+            box=box.SIMPLE_HEAVY,
+            header_style="bold magenta",
+            border_style="magenta",
+        )
+        table.add_column("Checkpoint ID", style="bold magenta", no_wrap=True)
+        table.add_column("Tool", no_wrap=True)
+        table.add_column("Updated", no_wrap=True)
+        table.add_column("Files", justify="right", no_wrap=True)
+        table.add_column("Summary", style="white")
+        for row in rows:
+            table.add_row(
+                str(row.get("checkpoint_id", "")),
+                str(row.get("tool_name", "")),
+                str(row.get("updated_at", "")),
+                str(row.get("file_count", "")),
+                str(row.get("summary_preview", "")),
+            )
+        self.console.print(table)
+
+    def checkpoint_diff(self, checkpoint_id: str, rendered: str) -> None:
+        self._finish_stream(remember=False)
+        self.console.print(
+            Panel(
+                rendered or "(empty diff)",
+                title=f"checkpoint diff · {checkpoint_id}",
+                border_style="magenta",
+                box=box.ROUNDED,
+            )
+        )
+
     def help(self, message: str) -> None:
         self._finish_stream(remember=False)
         self.console.print(
