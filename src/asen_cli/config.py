@@ -9,6 +9,8 @@ from pydantic import BaseModel, Field, field_validator
 
 from .utils.errors import ConfigError
 
+SENSITIVE_CONFIG_KEYS = {"api_key"}
+
 
 class AsenConfig(BaseModel):
     api_key: str | None = None
@@ -28,6 +30,27 @@ class AsenConfig(BaseModel):
     @classmethod
     def parse_workspace(cls, value: Any) -> Path:
         return Path(value).expanduser().resolve()
+
+
+def config_fields() -> list[str]:
+    return sorted(AsenConfig.model_fields)
+
+
+def default_config_template() -> dict[str, Any]:
+    return {
+        "api_key": "sk-your-api-key",
+        "base_url": "https://api.openai.com/v1",
+        "model": "gpt-4o-mini",
+        "workspace": ".",
+        "max_steps": 8,
+        "max_context_messages": 24,
+        "max_context_tokens": 16_000,
+        "reserve_output_tokens": 2_000,
+        "command_timeout_seconds": 20,
+        "max_file_bytes": 120_000,
+        "max_tool_output_chars": 12_000,
+        "require_approval": True,
+    }
 
 
 def _env_bool(value: str) -> bool:
@@ -50,14 +73,33 @@ ENV_MAPPING: dict[str, tuple[str, Any]] = {
 }
 
 
+def get_config_path(scope: str = "project") -> Path:
+    if scope == "global":
+        return Path.home() / ".asen" / "config.yaml"
+    if scope == "project":
+        return Path.cwd() / ".asen" / "config.yaml"
+    raise ConfigError(f"Unknown config scope: {scope}")
+
+
 def _read_yaml(path: Path) -> dict[str, Any]:
     if not path.exists():
         raise ConfigError(f"Config file not found: {path}")
+    return _read_yaml_if_exists(path)
+
+
+def _read_yaml_if_exists(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
     with path.open("r", encoding="utf-8") as file:
         loaded = yaml.safe_load(file) or {}
     if not isinstance(loaded, dict):
         raise ConfigError("Config file must contain a YAML object")
     return loaded
+
+
+def _write_yaml(path: Path, data: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
 
 
 def _coerce_env_values(raw_values: dict[str, str]) -> dict[str, Any]:
@@ -94,12 +136,66 @@ def load_config(
     workspace: Path | str | None = None,
     overrides: dict[str, Any] | None = None,
 ) -> AsenConfig:
-    data: dict[str, Any] = _dotenv_overrides(Path.cwd() / ".env")
+    data: dict[str, Any] = {}
+    data.update(_dotenv_overrides(Path.cwd() / ".env"))
+    data.update(_env_overrides())
+    data.update(_read_yaml_if_exists(get_config_path("global")))
+    data.update(_read_yaml_if_exists(get_config_path("project")))
     if config_path:
         data.update(_read_yaml(Path(config_path).expanduser().resolve()))
-    data.update(_env_overrides())
     if workspace is not None:
         data["workspace"] = Path(workspace)
     if overrides:
         data.update({key: value for key, value in overrides.items() if value is not None})
     return AsenConfig(**data)
+
+
+def read_config_file(path: Path) -> dict[str, Any]:
+    return _read_yaml_if_exists(path.expanduser().resolve())
+
+
+def init_config_file(path: Path, *, force: bool = False) -> Path:
+    target = path.expanduser().resolve()
+    if target.exists() and not force:
+        raise ConfigError(f"Config file already exists: {target}")
+    _write_yaml(target, default_config_template())
+    return target
+
+
+def set_config_value(path: Path, key: str, raw_value: str) -> Path:
+    if key not in AsenConfig.model_fields:
+        raise ConfigError(f"Unknown config key: {key}. Available: {', '.join(config_fields())}")
+    target = path.expanduser().resolve()
+    data = _read_yaml_if_exists(target)
+    data[key] = _coerce_config_value(key, raw_value)
+    _write_yaml(target, data)
+    return target
+
+
+def get_config_value(config: AsenConfig, key: str) -> Any:
+    if key not in AsenConfig.model_fields:
+        raise ConfigError(f"Unknown config key: {key}. Available: {', '.join(config_fields())}")
+    return getattr(config, key)
+
+
+def mask_config(data: dict[str, Any]) -> dict[str, Any]:
+    masked = dict(data)
+    for key in SENSITIVE_CONFIG_KEYS:
+        if masked.get(key):
+            masked[key] = "***"
+    return masked
+
+
+def _coerce_config_value(key: str, raw_value: str) -> Any:
+    field = AsenConfig.model_fields[key]
+    annotation = field.annotation
+    value = raw_value.strip()
+    if annotation is bool:
+        return _env_bool(value)
+    if annotation is int:
+        return int(value)
+    if annotation is Path:
+        return value
+    if key == "api_key" and value.lower() in {"none", "null", ""}:
+        return None
+    return value

@@ -59,6 +59,18 @@ ASEN_BASE_URL="https://api.openai.com/v1"
 ASEN_MODEL="gpt-4o-mini"
 ```
 
+也可以使用配置命令管理全局或项目配置：
+
+```bash
+asen config init --global
+asen config set model gpt-4o-mini --global
+asen config init
+asen config set base_url https://api.openai.com/v1
+asen config get
+```
+
+配置优先级为：`.env` / 环境变量 < `~/.asen/config.yaml` < `.asen/config.yaml` < `--config` 指定文件 < CLI 显式参数。完整说明见 `docs/config_upgrade.md`。
+
 ## 使用
 
 交互式会话：
@@ -110,6 +122,8 @@ asen chat --workspace examples/demo_project --verbose
 当前内置工具包括 `read_file`、`read_file_chunk`、`write_file`、`replace_in_file`、`apply_patch`、`list_files`、`find_files`、`search_text`、`grep_context`、`show_tree`、`read_many_files`、`shell`、`web_fetch`。
 
 v0.7 起，新增上下文压缩能力：`ContextManager` 会按 token budget 组合 system、summary、facts、plan 和 recent messages，对旧消息做规则摘要，对大工具结果做压缩，并新增 `read_file_chunk` 支持大文件分段读取。完整说明见 `docs/context_compression_upgrade.md`。
+
+v0.8 起，新增多层配置系统：支持 `~/.asen/config.yaml` 全局配置、`.asen/config.yaml` 项目配置，以及 `asen config init/get/set` 子命令。完整说明见 `docs/config_upgrade.md`。
 
 ## 安全设计
 
