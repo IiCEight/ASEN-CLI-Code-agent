@@ -63,6 +63,7 @@ ASEN_MODEL="gpt-4o-mini"
 
 ```bash
 asen config init --global
+asen config set provider openai --global
 asen config set model gpt-4o-mini --global
 asen config init
 asen config set base_url https://api.openai.com/v1
@@ -124,6 +125,8 @@ asen chat --workspace examples/demo_project --verbose
 v0.7 起，新增上下文压缩能力：`ContextManager` 会按 token budget 组合 system、summary、facts、plan 和 recent messages，对旧消息做规则摘要，对大工具结果做压缩，并新增 `read_file_chunk` 支持大文件分段读取。完整说明见 `docs/context_compression_upgrade.md`。
 
 v0.8 起，新增多层配置系统：支持 `~/.asen/config.yaml` 全局配置、`.asen/config.yaml` 项目配置，以及 `asen config init/get/set` 子命令。完整说明见 `docs/config_upgrade.md`。
+
+v0.9 起，新增多模型 Provider：`openai`、`openai-compatible`、`deepseek`、`kimi`、`tongyi`、`zhipu` 走 OpenAI-compatible adapter，`ollama` 走本地 `/api/chat` adapter。完整说明见 `docs/provider_upgrade.md`。
 
 ## 安全设计
 

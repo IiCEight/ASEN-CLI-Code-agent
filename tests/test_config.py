@@ -58,6 +58,7 @@ def test_project_config_wins_over_global_and_env(tmp_path, monkeypatch):
 
 def test_env_is_loaded_when_no_yaml_config(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ASEN_PROVIDER", "deepseek")
     monkeypatch.setenv("ASEN_MODEL", "env-model")
     monkeypatch.setenv("ASEN_MAX_CONTEXT_TOKENS", "12000")
     monkeypatch.setenv("ASEN_RESERVE_OUTPUT_TOKENS", "1500")
@@ -104,6 +105,7 @@ def test_init_config_file_creates_template(tmp_path):
     data = read_config_file(created)
 
     assert created == target.resolve()
+    assert data["provider"] == "openai"
     assert data["model"] == "gpt-4o-mini"
     assert data["base_url"] == "https://api.openai.com/v1"
 

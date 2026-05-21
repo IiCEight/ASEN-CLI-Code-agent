@@ -20,3 +20,7 @@ build/
 # Sensitive configs
 examples/config.yaml
 
+# Notebook / temp files
+*.html
+.ipynb_checkpoints/
+

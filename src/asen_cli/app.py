@@ -17,8 +17,8 @@ from .config import (
     set_config_value,
 )
 from .core.agent import Agent, load_system_prompt
-from .core.llm import OpenAICompatibleClient
 from .core.session import ChatSession
+from .llm.factory import create_llm_client
 from .tools import create_default_registry
 from .ui.console import AsenConsole
 from .ui.input import InputReader
@@ -234,7 +234,7 @@ def _build_agent(
     registry = create_default_registry(cfg, confirm=console.confirm)
     return Agent(
         config=cfg,
-        llm=OpenAICompatibleClient(cfg),
+        llm=create_llm_client(cfg),
         tools=registry,
         system_prompt=load_system_prompt(),
         events=console.agent_events(),

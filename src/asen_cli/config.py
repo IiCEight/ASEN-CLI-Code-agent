@@ -13,6 +13,7 @@ SENSITIVE_CONFIG_KEYS = {"api_key"}
 
 
 class AsenConfig(BaseModel):
+    provider: str = "openai"
     api_key: str | None = None
     base_url: str = "https://api.openai.com/v1"
     model: str = "gpt-4o-mini"
@@ -38,6 +39,7 @@ def config_fields() -> list[str]:
 
 def default_config_template() -> dict[str, Any]:
     return {
+        "provider": "openai",
         "api_key": "sk-your-api-key",
         "base_url": "https://api.openai.com/v1",
         "model": "gpt-4o-mini",
@@ -58,6 +60,7 @@ def _env_bool(value: str) -> bool:
 
 
 ENV_MAPPING: dict[str, tuple[str, Any]] = {
+    "ASEN_PROVIDER": ("provider", str),
     "ASEN_API_KEY": ("api_key", str),
     "ASEN_BASE_URL": ("base_url", str),
     "ASEN_MODEL": ("model", str),
