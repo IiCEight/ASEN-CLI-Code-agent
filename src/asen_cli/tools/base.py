@@ -15,10 +15,11 @@ class ToolResult(BaseModel):
     error: str | None = None
     error_type: str | None = None
     retryable: bool = False
+    meta: dict[str, Any] = Field(default_factory=dict)
 
     @classmethod
-    def success(cls, content: str) -> ToolResult:
-        return cls(ok=True, content=content)
+    def success(cls, content: str, *, meta: dict[str, Any] | None = None) -> ToolResult:
+        return cls(ok=True, content=content, meta=meta or {})
 
     @classmethod
     def failure(
@@ -27,6 +28,7 @@ class ToolResult(BaseModel):
         *,
         error_type: str = "tool_error",
         retryable: bool = False,
+        meta: dict[str, Any] | None = None,
     ) -> ToolResult:
         return cls(
             ok=False,
@@ -34,6 +36,7 @@ class ToolResult(BaseModel):
             error=error,
             error_type=error_type,
             retryable=retryable,
+            meta=meta or {},
         )
 
     def render(self) -> str:
@@ -42,6 +45,17 @@ class ToolResult(BaseModel):
         prefix = f"ERROR[{self.error_type}]" if self.error_type else "ERROR"
         retry_hint = " retryable=true" if self.retryable else " retryable=false"
         return f"{prefix}{retry_hint}: {self.error}"
+
+    def to_payload(self, *, rendered: str | None = None) -> dict[str, Any]:
+        return {
+            "ok": self.ok,
+            "content": self.content,
+            "rendered": rendered if rendered is not None else self.render(),
+            "error": self.error,
+            "error_type": self.error_type,
+            "retryable": self.retryable,
+            "meta": self.meta,
+        }
 
 
 class ToolExecutionLog(BaseModel):

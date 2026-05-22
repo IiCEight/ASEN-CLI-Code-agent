@@ -62,6 +62,9 @@ async def test_write_file_after_approval_creates_checkpoint(tmp_path):
     checkpoints = list((tmp_path / ".asen" / "checkpoints").glob("*/meta.json"))
     assert len(checkpoints) == 1
     assert "Checkpoint saved as" in result.content
+    assert result.meta["changed_files"][0]["path"] == "new.txt"
+    assert result.meta["changed_files"][0]["change_type"] == "created"
+    assert result.meta["checkpoints"][0]["checkpoint_id"]
 
 
 @pytest.mark.asyncio

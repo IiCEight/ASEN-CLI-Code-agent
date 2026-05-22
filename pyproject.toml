@@ -24,6 +24,7 @@ dev = [
 [project.scripts]
 asen = "asen_cli.__main__:main"
 asen-cli = "asen_cli.__main__:main"
+asen-mcp-filesystem-demo = "asen_cli.mcp.demo_server:main"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]

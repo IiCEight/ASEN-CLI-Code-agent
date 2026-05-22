@@ -41,6 +41,7 @@ class AgentEvents:
     on_plan_step: Callable[[PlanStep], None] | None = None
     on_tool_call: Callable[[str, dict[str, Any]], None] | None = None
     on_tool_result: Callable[[str, str], None] | None = None
+    on_tool_result_structured: Callable[[str, dict[str, Any]], None] | None = None
 
     def thinking(self, step: int) -> None:
         if self.on_thinking:
@@ -70,9 +71,16 @@ class AgentEvents:
         if self.on_tool_call:
             self.on_tool_call(name, arguments)
 
-    def tool_result(self, name: str, rendered: str) -> None:
+    def tool_result(
+        self,
+        name: str,
+        rendered: str,
+        payload: dict[str, Any] | None = None,
+    ) -> None:
         if self.on_tool_result:
             self.on_tool_result(name, rendered)
+        if self.on_tool_result_structured:
+            self.on_tool_result_structured(name, payload or {"rendered": rendered})
 
 
 JSON_BLOCK_PATTERN = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
@@ -153,7 +161,11 @@ class Agent:
                 result = await self.tools.execute(call.name, call.arguments)
                 all_tools_ok = all_tools_ok and result.ok
                 rendered = truncate_text(result.render(), self.config.max_tool_output_chars)
-                self.events.tool_result(call.name, rendered)
+                self.events.tool_result(
+                    call.name,
+                    rendered,
+                    payload=result.to_payload(rendered=rendered),
+                )
                 self.context.add_tool(call.name, rendered)
                 if not result.ok:
                     self.context.add_user(_format_tool_failure_feedback(call.name, result))

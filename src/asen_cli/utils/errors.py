@@ -16,3 +16,7 @@ class ToolError(AsenError):
 
 class LlmError(AsenError):
     """Raised when the LLM request or response is invalid."""
+
+
+class McpError(AsenError):
+    """Raised when an MCP client or server interaction fails."""

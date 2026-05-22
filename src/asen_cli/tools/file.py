@@ -204,7 +204,18 @@ class WriteFileTool(BaseTool):
                 f"Wrote {len(typed_args.content)} chars to {path}."
                 f"{checkpoint_note}\n{rendered_diff}"
             )
-            return ToolResult.success(message)
+            meta = {
+                "kind": "file_write",
+                "changed_files": [],
+                "checkpoints": [],
+            }
+            if checkpoint is not None:
+                changed_files = checkpoint.changed_files_payload()
+                for item in changed_files:
+                    item["diff"] = diff
+                meta["changed_files"] = changed_files
+                meta["checkpoints"] = [checkpoint.metadata_payload()]
+            return ToolResult.success(message, meta=meta)
         except SafetyError as exc:
             return ToolResult.failure(str(exc), error_type="safety_error", retryable=False)
         except OSError as exc:

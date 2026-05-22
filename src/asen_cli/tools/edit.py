@@ -172,10 +172,30 @@ def _maybe_write_diff_first(
 ) -> ToolResult:
     diff = _unified_diff(workspace, path, original, updated)
     rendered_diff = truncate_text(diff or "No changes.", max_output_chars)
+    rel = path.resolve().relative_to(workspace.resolve()).as_posix()
+    preview_meta = {
+        "kind": "file_edit_preview" if dry_run else "file_edit",
+        "changed_files": [
+            {
+                "path": rel,
+                "change_type": "modified",
+                "diff": diff,
+                "checkpoint_id": None,
+                "before_snapshot_path": None,
+                "after_snapshot_path": None,
+                "diff_file_path": None,
+                "tool_name": tool_name,
+            }
+        ],
+        "checkpoints": [],
+    }
     if original == updated:
-        return ToolResult.success("No changes.\n" + rendered_diff)
+        return ToolResult.success("No changes.\n" + rendered_diff, meta=preview_meta)
     if dry_run:
-        return ToolResult.success("Dry run only. No file was changed.\n" + rendered_diff)
+        return ToolResult.success(
+            "Dry run only. No file was changed.\n" + rendered_diff,
+            meta=preview_meta,
+        )
     if require_approval:
         prompt = f"Apply diff to {path}?\n{rendered_diff}"
         if confirm is None or not confirm(prompt):
@@ -203,7 +223,19 @@ def _maybe_write_diff_first(
         f"Applied edit to {path}. Snapshot saved at {rel_snapshot}."
         f"{checkpoint_note}\n{rendered_diff}"
     )
-    return ToolResult.success(message)
+    meta = {
+        "kind": "file_edit",
+        "changed_files": [],
+        "checkpoints": [],
+    }
+    if checkpoint is not None:
+        changed_files = checkpoint.changed_files_payload()
+        for item in changed_files:
+            item["diff"] = diff
+            item["snapshot_path"] = str(snapshot_path)
+        meta["changed_files"] = changed_files
+        meta["checkpoints"] = [checkpoint.metadata_payload()]
+    return ToolResult.success(message, meta=meta)
 
 
 def _unified_diff(workspace: Path, path: Path, original: str, updated: str) -> str:

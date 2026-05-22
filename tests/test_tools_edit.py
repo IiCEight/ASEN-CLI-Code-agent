@@ -151,6 +151,8 @@ async def test_apply_patch_writes_after_approval_and_creates_checkpoint(tmp_path
     assert list((tmp_path / ".asen" / "snapshots").rglob("hello.py"))
     assert list((tmp_path / ".asen" / "checkpoints").glob("*/meta.json"))
     assert "Checkpoint saved as" in result.content
+    assert result.meta["changed_files"][0]["path"] == "hello.py"
+    assert result.meta["checkpoints"][0]["checkpoint_id"]
 
 
 @pytest.mark.asyncio

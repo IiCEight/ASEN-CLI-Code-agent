@@ -177,6 +177,33 @@ class CheckpointStore:
             return diff_text
         return truncate_text(diff_text, max_chars)
 
+    def metadata_payload(self) -> dict[str, object]:
+        return {
+            **self.meta.model_dump(mode="json"),
+            "checkpoint_root": str(self.root),
+            "diff_file_path": str(self.diff_path),
+        }
+
+    def changed_files_payload(self) -> list[dict[str, object]]:
+        items: list[dict[str, object]] = []
+        for entry in self.manifest.files:
+            items.append(
+                {
+                    **entry.model_dump(mode="json"),
+                    "checkpoint_id": self.meta.checkpoint_id,
+                    "tool_name": self.meta.tool_name,
+                    "checkpoint_root": str(self.root),
+                    "before_snapshot_path": (
+                        str(self.root / entry.before_snapshot)
+                        if entry.before_snapshot
+                        else None
+                    ),
+                    "after_snapshot_path": str(self.root / entry.after_snapshot),
+                    "diff_file_path": str(self.root / entry.diff_path),
+                }
+            )
+        return items
+
     def restore(self) -> list[str]:
         actions: list[str] = []
         for entry in self.manifest.files:

@@ -9,7 +9,24 @@ from pydantic import BaseModel, Field, field_validator
 
 from .utils.errors import ConfigError
 
-SENSITIVE_CONFIG_KEYS = {"api_key"}
+SENSITIVE_CONFIG_KEYS = {"api_key", "token", "secret", "password", "authorization"}
+
+
+class McpServerConfig(BaseModel):
+    command: str
+    args: list[str] = Field(default_factory=list)
+    env: dict[str, str] = Field(default_factory=dict)
+    cwd: Path | None = None
+    timeout_seconds: int = 20
+    enabled: bool = True
+    description: str | None = None
+
+    @field_validator("cwd", mode="before")
+    @classmethod
+    def parse_cwd(cls, value: Any) -> Path | None:
+        if value in (None, ""):
+            return None
+        return Path(value).expanduser().resolve()
 
 
 class AsenConfig(BaseModel):
@@ -26,6 +43,7 @@ class AsenConfig(BaseModel):
     max_file_bytes: int = 120_000
     max_tool_output_chars: int = 12_000
     require_approval: bool = True
+    mcp_servers: dict[str, McpServerConfig] = Field(default_factory=dict)
 
     @field_validator("workspace", mode="before")
     @classmethod
@@ -52,6 +70,7 @@ def default_config_template() -> dict[str, Any]:
         "max_file_bytes": 120_000,
         "max_tool_output_chars": 12_000,
         "require_approval": True,
+        "mcp_servers": {},
     }
 
 
@@ -102,7 +121,10 @@ def _read_yaml_if_exists(path: Path) -> dict[str, Any]:
 
 def _write_yaml(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    path.write_text(
+        yaml.safe_dump(data, sort_keys=False, allow_unicode=True),
+        encoding="utf-8",
+    )
 
 
 def _coerce_env_values(raw_values: dict[str, str]) -> dict[str, Any]:
@@ -175,6 +197,17 @@ def set_config_value(path: Path, key: str, raw_value: str) -> Path:
     return target
 
 
+def set_mcp_server_config(path: Path, name: str, server: McpServerConfig) -> Path:
+    target = path.expanduser().resolve()
+    data = _read_yaml_if_exists(target)
+    mcp_servers = data.setdefault("mcp_servers", {})
+    if not isinstance(mcp_servers, dict):
+        raise ConfigError("Config key `mcp_servers` must be a YAML object")
+    mcp_servers[name] = server.model_dump(mode="json", exclude_none=True)
+    _write_yaml(target, data)
+    return target
+
+
 def get_config_value(config: AsenConfig, key: str) -> Any:
     if key not in AsenConfig.model_fields:
         raise ConfigError(f"Unknown config key: {key}. Available: {', '.join(config_fields())}")
@@ -182,17 +215,38 @@ def get_config_value(config: AsenConfig, key: str) -> Any:
 
 
 def mask_config(data: dict[str, Any]) -> dict[str, Any]:
-    masked = dict(data)
-    for key in SENSITIVE_CONFIG_KEYS:
-        if masked.get(key):
-            masked[key] = "***"
-    return masked
+    return _mask_value(data)
+
+
+def _mask_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        masked: dict[str, Any] = {}
+        for key, item in value.items():
+            if _is_sensitive_key(key) and item not in (None, ""):
+                masked[key] = "***"
+            else:
+                masked[key] = _mask_value(item)
+        return masked
+    if isinstance(value, list):
+        return [_mask_value(item) for item in value]
+    return value
+
+
+def _is_sensitive_key(key: str) -> bool:
+    lowered = key.lower()
+    return any(token in lowered for token in SENSITIVE_CONFIG_KEYS)
 
 
 def _coerce_config_value(key: str, raw_value: str) -> Any:
+    value = raw_value.strip()
+    if key == "mcp_servers":
+        loaded = yaml.safe_load(value) or {}
+        if not isinstance(loaded, dict):
+            raise ConfigError("mcp_servers must be a YAML/JSON object")
+        return loaded
+
     field = AsenConfig.model_fields[key]
     annotation = field.annotation
-    value = raw_value.strip()
     if annotation is bool:
         return _env_bool(value)
     if annotation is int:

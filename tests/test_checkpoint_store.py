@@ -18,6 +18,8 @@ def test_checkpoint_store_can_list_and_render_diff(tmp_path):
     diff_text = reopened.render_diff()
     assert "-print('old')" in diff_text
     assert "+print('new')" in diff_text
+    assert reopened.metadata_payload()["checkpoint_id"] == store.checkpoint_id
+    assert reopened.changed_files_payload()[0]["path"] == "hello.py"
 
 
 def test_checkpoint_restore_restores_existing_file(tmp_path):

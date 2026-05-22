@@ -174,6 +174,10 @@ asen ask "解释 hello.py" --workspace examples/demo_project --no-stream
 
 默认流式模式下，如果模型直接返回 `{"final": ...}`，终端会用 Rich Live 边生成边刷新；如果模型返回 `{"tool_calls": ...}` 或 `{"plan": ...}`，则不会把原始 JSON 流直接暴露给用户，而是在完整解析后切换到工具执行/计划展示。
 
+### 编辑器集成 / JSON Output
+
+`asen ask --json` 会输出一个单独的 JSON 对象，包含 `final_text`、`events`、`tool_results`、`tool_failures`、`checkpoints` 和 `changed_files`。`asen checkpoint list --json`、`asen checkpoint diff <id> --json`、`asen checkpoint restore <id> --json --force` 则为编辑器插件和外部脚本提供 checkpoint 查询、diff 展示和回滚接口。当前参考实现见同级目录 `../asen-vscode-extension`。
+
 ## 工具协议
 
 计划：
@@ -204,6 +208,14 @@ v0.9 起，新增多模型 Provider：`openai`、`openai-compatible`、`deepseek
 
 v1.0 起，新增流式输出：CLI 默认走 provider 的 `stream_complete()`，`AsenConsole` 使用 Rich Live 渲染最终回答；`asen chat` / `asen ask` 支持 `--stream/--no-stream`。为了兼容当前 JSON 协议，Agent 只在增量识别到 `final` / `final_text` 字段时流式展示文本，遇到 `plan` / `tool_calls` 会先完成解析再进入后续执行。完整说明见 `docs/streaming_output_upgrade.md`。
 
+v1.1 起，新增会话持久化：`asen chat` / `asen shell` 会自动保存对话、工具调用记录、shell 执行结果、上下文快照和最终摘要，并提供 `asen session list` 与 `asen session resume <id>` 两个命令恢复工作流。完整说明见 `docs/session_persistence_upgrade.md`。
+
+v1.2 起，新增 checkpoint / 回滚：所有核心写文件工具在真正写盘前都会创建 `.asen/checkpoints/` 快照，并提供 `asen checkpoint list`、`asen checkpoint diff <id>` 和 `asen checkpoint restore <id>`。完整说明见 `docs/checkpoint_upgrade.md`。
+
+v1.3 起，新增编辑器友好能力：`asen ask --json` 与 `asen checkpoint * --json` 提供稳定的机器可读输出，支持 VS Code Extension 通过本地命令消费 `final_text`、`events`、`changed_files` 和 `checkpoints`。完整说明见 `docs/editor_integration_upgrade.md`。
+
+v1.4 起，新增轻量 MCP 支持：CLI 可以读取 `mcp_servers` 配置、启动本地 stdio MCP server、执行 `tools/list` 与 `tools/call`，并提供内置 filesystem demo server 用于演示 extensibility。完整说明见 `docs/mcp_lightweight_upgrade.md`。
+
 ## 安全设计
 
 文件工具通过 `Path.resolve()` 校验路径必须在 workspace 内。Agent 侧的 `write_file` 和 `shell` 工具默认需要用户确认。手动 `!command` 模式则采用更轻量的 guard：普通命令直接执行，高风险命令确认，明显危险的命令直接阻断。Shell 相关能力会拦截 `sudo`、`rm -rf /`、`mkfs`、`dd of=/dev/...`、`shutdown` 和 fork bomb，并对 `git push/reset`、依赖安装、输出重定向、远程执行等命令做高风险确认。所有工具输出按配置截断，避免上下文爆炸。
@@ -229,4 +241,11 @@ Shell 模式与安全相关回归：
 pytest tests/test_shell_mode.py tests/test_safety.py tests/test_tools_shell.py -q
 ```
 
-测试覆盖配置加载、路径安全、工具行为、网页抓取 mock、Agent 工具调用循环、会话保存与恢复、checkpoint 捕获与回滚，以及 Shell 执行安全边界。
+编辑器集成与 JSON 输出回归：
+
+```bash
+pytest tests/test_streaming_cli.py tests/test_tools_file.py tests/test_tools_edit.py tests/test_checkpoint_store.py -q
+cd ../asen-vscode-extension && npm install && npm run compile
+```
+
+测试覆盖配置加载、路径安全、工具行为、网页抓取 mock、Agent 工具调用循环、会话保存与恢复、checkpoint 捕获与回滚、机器可读 JSON 输出，以及 Shell 执行安全边界。
