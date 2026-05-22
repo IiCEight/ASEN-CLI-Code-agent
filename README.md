@@ -49,9 +49,30 @@ flowchart TD
 
 ```bash
 cd asen-cli
+uv sync --extra dev
+```
+
+如果你只想安装运行时依赖：
+
+```bash
+uv sync
+```
+
+`uv` 会直接读取项目根目录的 `pyproject.toml` 和 `uv.lock`，创建/复用 `.venv`，并按锁定版本安装依赖。相较于手动执行 `pip install -e ".[dev]"`，这个流程更稳定，也更容易复现。
+
+传统 `venv + pip` 方式仍然可用：
+
+```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
+```
+
+安装后可以用下面的方式执行命令：
+
+```bash
+uv run asen --help
+uv run pytest -q
 ```
 
 配置环境变量或创建 `.env`：
