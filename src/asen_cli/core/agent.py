@@ -150,6 +150,7 @@ class Agent:
                 continue
             if not parsed.tool_calls:
                 final = parsed.final_text or raw_response
+                final = _append_sources_to_final(final, self.tools.logs())
                 self.context.add_assistant(final)
                 return final
 
@@ -314,6 +315,41 @@ def _format_tool_failure_feedback(tool_name: str, result: Any) -> str:
         f"The previous tool call `{tool_name}` failed with {result.error_type}: "
         f"{result.error}. {retry_instruction}"
     )
+
+
+def _append_sources_to_final(final: str, logs: list[Any]) -> str:
+    sources = _collect_sources(logs)
+    if not sources:
+        return final
+
+    lines = [final.rstrip(), "", "## Sources", ""]
+    for index, source in enumerate(sources, start=1):
+        snippet = str(source.get("snippet") or "").strip()
+        line = f"{index}. [{source['title']}]({source['url']})"
+        if snippet:
+            line += f" — {truncate_text(snippet, 180)}"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def _collect_sources(logs: list[Any]) -> list[dict[str, str]]:
+    collected: list[dict[str, str]] = []
+    seen_urls: set[str] = set()
+    for log in logs:
+        meta = getattr(log, "meta", {}) or {}
+        for item in meta.get("sources", []):
+            url = str(item.get("url") or "").strip()
+            if not url or url in seen_urls:
+                continue
+            seen_urls.add(url)
+            collected.append(
+                {
+                    "title": str(item.get("title") or url).strip(),
+                    "url": url,
+                    "snippet": str(item.get("snippet") or "").strip(),
+                }
+            )
+    return collected
 
 
 def _extract_partial_final_text(text: str) -> str | None:

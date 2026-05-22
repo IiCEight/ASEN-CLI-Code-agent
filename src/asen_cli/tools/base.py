@@ -66,6 +66,7 @@ class ToolExecutionLog(BaseModel):
     error_type: str | None = None
     retryable: bool = False
     elapsed_ms: int
+    meta: dict[str, Any] = Field(default_factory=dict)
 
 
 class BaseTool(ABC):

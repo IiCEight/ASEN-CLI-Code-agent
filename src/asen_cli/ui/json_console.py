@@ -149,6 +149,7 @@ class AsenJsonConsole(AsenConsole):
             "tool_failures": self.tool_failures,
             "checkpoints": self.checkpoints,
             "changed_files": self.changed_files,
+            "sources": self.sources,
         }
 
     def _append_event(self, event_type: str, **payload: Any) -> None:

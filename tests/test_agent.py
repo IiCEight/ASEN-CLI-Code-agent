@@ -1,4 +1,5 @@
 import pytest
+from pydantic import BaseModel
 
 from asen_cli.config import AsenConfig
 from asen_cli.core.agent import (
@@ -7,6 +8,7 @@ from asen_cli.core.agent import (
     _extract_partial_final_text,
     parse_agent_response,
 )
+from asen_cli.tools.base import BaseTool, ToolResult
 from asen_cli.tools.file import ReadFileTool, WriteFileTool
 from asen_cli.tools.registry import ToolRegistry
 
@@ -288,6 +290,52 @@ async def test_agent_retries_invalid_plain_text_response(tmp_path):
     assert (tmp_path / "helloworld.py").read_text(encoding="utf-8") == 'print("Hello, World!")\n'
     assert len(llm.calls) == 3
     assert "could not be used" in llm.calls[1][0][-1]["content"]
+
+
+class _SourceArgs(BaseModel):
+    query: str = "docs"
+
+
+class _SourceTool(BaseTool):
+    name = "web_search"
+    description = "source tool"
+    args_model = _SourceArgs
+
+    async def _run(self, args: BaseModel) -> ToolResult:
+        return ToolResult.success(
+            "Found docs",
+            meta={
+                "sources": [
+                    {
+                        "title": "Example Docs",
+                        "url": "https://example.com/docs",
+                        "snippet": "Latest docs",
+                    }
+                ]
+            },
+        )
+
+
+@pytest.mark.asyncio
+async def test_agent_appends_sources_to_final_answer(tmp_path):
+    llm = FakeLlm(
+        [
+            '{"tool_calls":[{"name":"web_search","arguments":{"query":"asen docs"}}]}',
+            '{"final": "Use the latest docs."}',
+        ]
+    )
+    agent = Agent(
+        config=AsenConfig(workspace=tmp_path, max_steps=3),
+        llm=llm,
+        tools=ToolRegistry([_SourceTool()]),
+        system_prompt="system",
+    )
+
+    result = await agent.run("find latest docs")
+
+    assert "Use the latest docs." in result
+    assert "## Sources" in result
+    assert "https://example.com/docs" in result
 
 
 @pytest.mark.asyncio

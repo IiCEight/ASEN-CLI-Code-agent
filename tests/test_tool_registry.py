@@ -1,5 +1,7 @@
 import pytest
+from pydantic import BaseModel
 
+from asen_cli.tools.base import BaseTool, ToolResult
 from asen_cli.tools.file import ReadFileTool
 from asen_cli.tools.registry import ToolRegistry
 
@@ -44,3 +46,37 @@ async def test_registry_unknown_tool_is_logged(tmp_path):
     assert result.error_type == "unknown_tool"
     assert result.retryable is True
     assert registry.logs()[0].name == "missing"
+
+
+class _SourceArgs(BaseModel):
+    query: str = "docs"
+
+
+class _SourceTool(BaseTool):
+    name = "source_tool"
+    description = "return sources"
+    args_model = _SourceArgs
+
+    async def _run(self, args: BaseModel) -> ToolResult:
+        return ToolResult.success(
+            "done",
+            meta={
+                "sources": [
+                    {
+                        "title": "Example Docs",
+                        "url": "https://example.com/docs",
+                        "snippet": "reference",
+                    }
+                ]
+            },
+        )
+
+
+@pytest.mark.asyncio
+async def test_registry_records_tool_meta():
+    registry = ToolRegistry([_SourceTool()])
+
+    result = await registry.execute("source_tool", {"query": "docs"})
+
+    assert result.ok
+    assert registry.logs()[0].meta["sources"][0]["url"] == "https://example.com/docs"

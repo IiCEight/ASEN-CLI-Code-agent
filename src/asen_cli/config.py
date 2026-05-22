@@ -92,6 +92,9 @@ ENV_MAPPING: dict[str, tuple[str, Any]] = {
     "ASEN_MAX_FILE_BYTES": ("max_file_bytes", int),
     "ASEN_MAX_TOOL_OUTPUT_CHARS": ("max_tool_output_chars", int),
     "ASEN_REQUIRE_APPROVAL": ("require_approval", _env_bool),
+    "ASEN_SEARCH_PROVIDER": ("search_provider", str),
+    "ASEN_SEARCH_API_KEY": ("search_api_key", str),
+    "ASEN_WEB_SEARCH_MAX_RESULTS": ("web_search_max_results", int),
 }
 
 

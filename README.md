@@ -248,4 +248,10 @@ pytest tests/test_streaming_cli.py tests/test_tools_file.py tests/test_tools_edi
 cd ../asen-vscode-extension && npm install && npm run compile
 ```
 
-测试覆盖配置加载、路径安全、工具行为、网页抓取 mock、Agent 工具调用循环、会话保存与恢复、checkpoint 捕获与回滚、机器可读 JSON 输出，以及 Shell 执行安全边界。
+Web Search / 文档检索回归：
+
+```bash
+pytest tests/test_tools_web.py tests/test_tool_registry.py tests/test_agent.py tests/test_config.py tests/test_config_commands.py -q
+```
+
+测试覆盖配置加载、路径安全、工具行为、网页抓取 mock、网页搜索结果解析、正文提取、来源引用聚合、Agent 工具调用循环、会话保存与恢复、checkpoint 捕获与回滚、机器可读 JSON 输出，以及 Shell 执行安全边界。

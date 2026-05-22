@@ -47,6 +47,7 @@ class ToolRegistry:
                 error_type=result.error_type,
                 retryable=result.retryable,
                 elapsed_ms=elapsed_ms,
+                meta=result.meta,
             )
         )
         return result

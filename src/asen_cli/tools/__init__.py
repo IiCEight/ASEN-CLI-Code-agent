@@ -14,7 +14,7 @@ from .search import (
     ShowTreeTool,
 )
 from .shell import ShellCommandTool
-from .web import WebFetchTool
+from .web import WebFetchTool, WebSearchTool
 
 
 def create_default_registry(
@@ -66,4 +66,4 @@ def create_default_registry(
     )
 
 
-__all__ = ["ToolRegistry", "create_default_registry"]
+__all__ = ["ToolRegistry", "create_default_registry", "WebSearchTool"]
