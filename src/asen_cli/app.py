@@ -291,6 +291,7 @@ def session_list(
         rows = [
             {
                 "session_id": item.session_id,
+                "alias": item.alias or "",
                 "session_mode": item.session_mode,
                 "updated_at": _compact_timestamp(item.updated_at),
                 "turn_count": item.turn_count,
